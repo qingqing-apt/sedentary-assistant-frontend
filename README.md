@@ -80,6 +80,7 @@ CopilotKit 没有公开的会话级错误回调，Runtime 或后端挂掉时界�
 |---|---|
 | 页面内继续对话 | 保留 |
 | 刷新 / 关标签页再开 | **保留**（threadId 从 localStorage 恢复） |
+| **杀掉 App 进程再打开（APK）** | **保留**（已实测，见 `docs/screenshots/06-apk-context-memory.png`） |
 | 换个用户登录 | 互不可见（threadId 按用户隔离） |
 | 重启 Runtime（`npm run runtime`） | **丢失** |
 
