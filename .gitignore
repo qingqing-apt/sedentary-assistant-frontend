@@ -4,3 +4,6 @@ dist/
 .env.local
 *.local
 .DS_Store
+
+# Capacitor / Android 构建产物
+release/

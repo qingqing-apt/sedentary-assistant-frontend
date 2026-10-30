@@ -71,3 +71,52 @@ CopilotKit 没有公开的会话级错误回调，Runtime 或后端挂掉时界�
 - CopilotKit 打包后首屏 chunk 约 2.4 MB，因为它自带 mermaid、代码高亮等。演示项目不拆包；要优化可以配 `build.rollupOptions.output.manualChunks`。
 - 对话面板首次加载会自动展开，点右下角按钮可收起。
 - 对话历史存在 Runtime 的内存里（`InMemoryAgentRunner`），刷新页面会丢。
+
+## 移动端（Web 响应式）
+
+宽度 ≤1040px 时自动切到移动端布局：单栏、吸顶顶栏、底部四页签（今日 / 统计 / 设置 / 助手）。桌面双栏布局不受影响，两套树由 `useMediaQuery` 分叉渲染。
+
+移动端会隐藏右下角的 CopilotKit 浮层对话（它会盖住 Tab 栏），改用「助手」页签里的按钮式建议。对话式 Agent 后续可做成 Tab 内嵌组件。
+
+## Android APK（Capacitor）
+
+用 Capacitor 把同一套 React 前端包成安卓 App，后端 API 原样复用。
+
+### 构建步骤
+
+```bash
+# 0) 前置：JDK 21 + Android SDK（platform 35 / build-tools 35）
+#    本机已验证：JDK 21.0.13 + SDK 35
+
+# 1) 构建 Web，并把后端地址注入进去
+#    模拟器用 10.0.2.2（映射到宿主机 localhost）；真机改成电脑的局域网 IP
+VITE_API_BASE=http://10.0.2.2:8000 npm run build
+
+# 2) 同步到 Android 工程
+npx cap sync android
+
+# 3) 打 debug 包
+cd android
+export JAVA_HOME="/path/to/jdk-21"
+export ANDROID_HOME="/path/to/Android/Sdk"
+./gradlew assembleDebug
+
+# 产物：android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+装到手机：`adb install -r app-debug.apk`，或直接把 APK 拷进手机点击安装。
+
+### 两个必须注意的点
+
+1. **后端地址是构建时烧进去的**（`VITE_API_BASE`，见 `src/api.ts`）。换后端地址要重新 `npm run build` + `npx cap sync`。
+2. **后端要放行 APK 的 origin**。`androidScheme: "http"` 让 WebView 的 origin 变成 `http://localhost`，后端 CORS 已加白名单；同时 `AndroidManifest` 需要允许明文 HTTP（局域网调试用 `http://`）。
+
+### 目录说明
+
+```
+capacitor.config.ts        Capacitor 配置（appId / webDir / androidScheme）
+android/                   生成的安卓工程（可直接用 Android Studio 打开）
+release/                   本地打包产物（已 gitignore）
+```
+
+APK 的包名是 `com.qingqing.sedentary`，应用名「久坐活动助手」，minSdk 23 / targetSdk 35。
