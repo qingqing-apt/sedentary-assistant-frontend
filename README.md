@@ -70,7 +70,22 @@ CopilotKit 没有公开的会话级错误回调，Runtime 或后端挂掉时界�
 
 - CopilotKit 打包后首屏 chunk 约 2.4 MB，因为它自带 mermaid、代码高亮等。演示项目不拆包；要优化可以配 `build.rollupOptions.output.manualChunks`。
 - 对话面板首次加载会自动展开，点右下角按钮可收起。
-- 对话历史存在 Runtime 的内存里（`InMemoryAgentRunner`），刷新页面会丢。
+- 对话历史存在 Runtime 的内存里（`InMemoryAgentRunner`），**重启 Runtime 会丢**；刷新页面不会，详见下一节。
+
+## 会话与上下文
+
+对话历史按 thread 隔离。threadId 由前端生成一次后存进 `localStorage`（key 用 token 哈希派生，不写明文凭证），并显式传给 CopilotKit —— threadId 一旦是外部传入的，内部就不会再自己生成新的。
+
+| 操作 | 历史 |
+|---|---|
+| 页面内继续对话 | 保留 |
+| 刷新 / 关标签页再开 | **保留**（threadId 从 localStorage 恢复） |
+| 换个用户登录 | 互不可见（threadId 按用户隔离） |
+| 重启 Runtime（`npm run runtime`） | **丢失** |
+
+最后一行是当前架构的边界，不是 bug：`@copilotkit/runtime` 只提供 `InMemoryAgentRunner`，历史实体在进程内存里。要彻底解决有两条路——自己实现 `AgentRunner` 接口把 thread 落 SQLite/文件，或者改成前端每次带全量 messages 给后端。
+
+这也意味着：**改完 `runtime/server.ts` 重启 Runtime 后，历史会清空**，这是预期行为。后端重启不影响（历史不在后端）。
 
 ## 移动端（Web 响应式）
 
