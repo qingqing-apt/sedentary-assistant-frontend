@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { CopilotKit, CopilotPopup } from "@copilotkit/react-core/v2";
+import { CopilotChatConfigurationProvider, CopilotKit, CopilotPopup } from "@copilotkit/react-core/v2";
 import "@copilotkit/react-core/v2/styles.css";
 
 type AgentErrorInfo = { message: string; hint: string } | null;
@@ -7,6 +7,39 @@ type AgentErrorInfo = { message: string; hint: string } | null;
 interface Props {
   token: string;
   children: ReactNode;
+}
+
+const THREAD_KEY_PREFIX = "sedentary.thread";
+
+/** 用 token 派生一个稳定 key，避免把凭证明文写进 localStorage。 */
+function ownerKeyOf(token: string): string {
+  let hash = 0;
+  for (let i = 0; i < token.length; i += 1) {
+    hash = (hash * 31 + token.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash).toString(36);
+}
+
+/**
+ * 让对话线程跨页面刷新存活。
+ *
+ * CopilotKit 默认每次挂载都生成一个新的 threadId，历史又只存在 Runtime 内存里
+ * （按 threadId 索引），所以刷新一次就等于开了个新会话——用户会看到"刚说的话它就不记得了"。
+ * 这里把 threadId 按登录用户落到 localStorage，并显式传给 CopilotKit；
+ * 一旦是外部传入的 threadId，内部就不会再自己生成新的。
+ */
+function usePersistentThreadId(token: string): string {
+  return useMemo(() => {
+    if (typeof window === "undefined") return `thread-${Date.now()}`;
+
+    const key = `${THREAD_KEY_PREFIX}.${ownerKeyOf(token)}`;
+    const saved = window.localStorage.getItem(key);
+    if (saved) return saved;
+
+    const created = `thread-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    window.localStorage.setItem(key, created);
+    return created;
+  }, [token]);
 }
 
 function useIsMobile(): boolean {
@@ -47,6 +80,8 @@ export function AgentChat({ token, children }: Props) {
    * 必须由构建时的 VITE_RUNTIME_URL 注入绝对地址（如 http://10.0.2.2:3000/api/copilotkit）。
    */
   const runtimeUrl = import.meta.env.VITE_RUNTIME_URL || "/api/copilotkit";
+
+  const threadId = usePersistentThreadId(token);
 
   const [agentError, setAgentError] = useState<AgentErrorInfo>(null);
   const isMobile = useIsMobile();
@@ -106,21 +141,24 @@ export function AgentChat({ token, children }: Props) {
         useSingleEndpoint={false}
         showDevConsole={false}
       >
-        {children}
-        {/* 移动端不渲染右下角浮层：它会盖住底部 Tab 栏，且 defaultOpen 不生效。
-            移动端的对话入口在「助手」Tab 里内嵌（AgentChatInline）。 */}
-        {!isMobile && (
-          <CopilotPopup
-            defaultOpen={false}
-            labels={{
-              modalHeaderTitle: "活动安排助手",
-              welcomeMessageText:
-                "想怎么安排？可以问我「今天有什么安排」「下午三点以后还有空吗」，或者让我排两次。",
-              chatInputPlaceholder: "比如「下午三点以后给我排两次」",
-              chatDisclaimerText: "回答基于你自己真实的安排生成；身体不适请咨询医生。",
-            }}
-          />
-        )}
+        {/* 把 threadId 显式钉住：刷新页面不再换线程，历史才能接上 */}
+        <CopilotChatConfigurationProvider threadId={threadId}>
+          {children}
+          {/* 移动端不渲染右下角浮层：它会盖住底部 Tab 栏，且 defaultOpen 不生效。
+              移动端的对话入口在「助手」Tab 里内嵌（AgentChatInline）。 */}
+          {!isMobile && (
+            <CopilotPopup
+              defaultOpen={false}
+              labels={{
+                modalHeaderTitle: "活动安排助手",
+                welcomeMessageText:
+                  "想怎么安排？可以问我「今天有什么安排」「下午三点以后还有空吗」，或者让我排两次。",
+                chatInputPlaceholder: "比如「下午三点以后给我排两次」",
+                chatDisclaimerText: "回答基于你自己真实的安排生成；身体不适请咨询医生。",
+              }}
+            />
+          )}
+        </CopilotChatConfigurationProvider>
       </CopilotKit>
 
       {agentError && (
