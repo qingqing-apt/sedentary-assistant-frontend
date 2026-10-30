@@ -789,3 +789,184 @@ button[aria-label^="CopilotKit Inspector"] {
   gap: 10px;
   margin-top: 14px;
 }
+
+/* ============ 移动端布局（≤1040px）============ */
+/* 桌面仍是 .layout 双栏；手机切到 .mobile-app + 底部 Tab 栏，两个树由 JS 按宽度切换 */
+
+@media (max-width: 1040px) {
+  :root {
+    --tabbar-h: 58px;
+  }
+
+  .page {
+    padding: 0;
+  }
+
+  /* 顶部栏：压紧凑 + 吸顶 */
+  .topbar {
+    margin: 0;
+    padding: 10px 16px;
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+  }
+  .topbar .brand p {
+    display: none;
+  }
+  .topbar h1 {
+    font-size: 16px;
+  }
+  .who span {
+    display: none;
+  }
+
+  .mobile-app {
+    display: block;
+  }
+  .mobile-panes {
+    padding: 14px 14px calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px) + 24px);
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .pane {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .pane[hidden] {
+    display: none !important;
+  }
+
+  /* 卡片与控件：更贴手 */
+  .card {
+    padding: 16px;
+    border-radius: 14px;
+  }
+  .btn {
+    min-height: 44px;
+    padding: 10px 16px;
+    font-size: 14px;
+  }
+  .btn.sm {
+    min-height: 36px;
+    padding: 6px 12px;
+    font-size: 13px;
+  }
+  .activity {
+    grid-template-columns: 46px minmax(0, 1fr);
+    gap: 10px;
+  }
+  .activity .acts {
+    grid-column: 1 / -1;
+    flex-wrap: wrap;
+  }
+  .field-row {
+    flex-wrap: wrap;
+  }
+
+  /* Toast 与对话入口提到 Tab 栏上方，避免被遮挡 */
+  .toast {
+    bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px) + 14px);
+  }
+  button[aria-label="Open chat"] {
+    bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px) + 14px) !important;
+  }
+}
+
+/* 底部 Tab 栏：只在移动端由 JS 渲染，固定吸底 */
+.tabbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: calc(var(--tabbar-h, 58px) + env(safe-area-inset-bottom, 0px));
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  display: flex;
+  background: var(--card);
+  border-top: 1px solid var(--border);
+  z-index: 999;
+}
+.tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  border: 0;
+  background: none;
+  color: var(--hint);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+.tab.on {
+  color: var(--accent);
+  font-weight: 600;
+}
+.tab svg {
+  display: block;
+}
+
+/* ---------- 移动端内嵌对话面板（助手 Tab） ---------- */
+
+/* 对话卡片：不再叠一个外层边框，交给 .chat-inline 自己描边 */
+.chat-card {
+  padding-bottom: 16px;
+}
+
+/* CopilotKit 的 Chat 组件默认按父容器撑满，这里给死高度避免和页面滚动打架 */
+.chat-inline {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.chat-inline > * {
+  height: 100%;
+}
+
+/* 内嵌面板不需要它自带的外阴影和圆角，否则和卡片叠成两层边框 */
+.chat-inline [class*="copilotChat"],
+.chat-inline [class*="CopilotChat"] {
+  box-shadow: none !important;
+  border-radius: 0 !important;
+}
+
+/* ---------- CopilotKit 主题色兜底（Android WebView 兼容） ---------- */
+
+/**
+ * CopilotKit v2 的主题变量全部用 oklch() 定义，而 oklch 要到 Chrome 111 才支持。
+ * Android 15 自带的 WebView 是 110，解析失败 → `background: var(--background)`
+ * 整条声明作废 → 对话面板背景透明，文字和背后的卡片叠在一起。
+ *
+ * 这里用 sRGB 覆盖成同一套色板（中性灰阶 + 绿色主色，和 App 自身主题一致）。
+ * 桌面浏览器本来支持 oklch，被这些值覆盖后视觉无差别。
+ */
+[data-copilotkit] {
+  --background: #ffffff;
+  --foreground: #23231f;
+  --card: #ffffff;
+  --card-foreground: #23231f;
+  --popover: #ffffff;
+  --popover-foreground: #23231f;
+  --primary: #1d9e75;
+  --primary-foreground: #ffffff;
+  --secondary: #f4f3ee;
+  --secondary-foreground: #23231f;
+  --muted: #f4f3ee;
+  --muted-foreground: #6f6e66;
+  --accent: #eaf6f1;
+  --accent-foreground: #14513d;
+  --destructive: #b42318;
+  --destructive-foreground: #ffffff;
+  --border: #e6e4dd;
+  --input: #e6e4dd;
+  --ring: #1d9e75;
+}

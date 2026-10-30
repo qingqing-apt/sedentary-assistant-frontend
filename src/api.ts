@@ -43,9 +43,18 @@ export function clearSession(): void {
   localStorage.removeItem(USER_KEY);
 }
 
+/**
+ * API 根地址。
+ *
+ * - Web（vite dev / 部署同域）：留空，走相对路径 `/api`，由 Vite 代理或同域反代转发。
+ * - Android APK（Capacitor）：WebView 里没有代理，必须指向真实后端地址，
+ *   构建时用 `VITE_API_BASE=http://10.0.2.2:8000`（模拟器）或局域网 IP（真机）。
+ */
+export const API_BASE = ((import.meta.env.VITE_API_BASE as string | undefined) ?? "").replace(/\/+$/, "");
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = getToken();
-  const response = await fetch(`/api${path}`, {
+  const response = await fetch(`${API_BASE}/api${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",

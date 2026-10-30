@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 import type { Activity, Proposal, ProposalItem, Settings, Weekly } from "../types";
+import { AgentChatInline } from "./AgentChatInline";
 import { AgentPanel } from "./AgentPanel";
 import { ProposalCard } from "./ProposalCard";
 import { SettingsPanel } from "./SettingsPanel";
@@ -13,6 +14,70 @@ interface Props {
   onLogout: () => void;
 }
 
+/** 监听媒体查询，用来在桌面 / 移动布局间切换。 */
+function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = useState(() =>
+    typeof window !== "undefined" ? window.matchMedia(query).matches : false,
+  );
+
+  useEffect(() => {
+    const mql = window.matchMedia(query);
+    const onChange = () => setMatches(mql.matches);
+    onChange();
+    mql.addEventListener("change", onChange);
+    return () => mql.removeEventListener("change", onChange);
+  }, [query]);
+
+  return matches;
+}
+
+type TabKey = "today" | "stats" | "settings" | "assistant";
+
+const TABS: { key: TabKey; label: string; icon: JSX.Element }[] = [
+  {
+    key: "today",
+    label: "今日",
+    icon: (
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 7v5l3 2" />
+      </svg>
+    ),
+  },
+  {
+    key: "stats",
+    label: "统计",
+    icon: (
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+        <path d="M5 20V10" />
+        <path d="M12 20V4" />
+        <path d="M19 20v-7" />
+      </svg>
+    ),
+  },
+  {
+    key: "settings",
+    label: "设置",
+    icon: (
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+        <path d="M4 6h16M4 12h16M4 18h16" />
+        <circle cx="9" cy="6" r="2" fill="var(--bg)" />
+        <circle cx="15" cy="12" r="2" fill="var(--bg)" />
+        <circle cx="7" cy="18" r="2" fill="var(--bg)" />
+      </svg>
+    ),
+  },
+  {
+    key: "assistant",
+    label: "助手",
+    icon: (
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <path d="M21 12a8 8 0 0 1-8 8H5l-2 2V12a8 8 0 0 1 8-8h2a8 8 0 0 1 8 8z" />
+      </svg>
+    ),
+  },
+];
+
 export function Assistant({ user, onLogout }: Props) {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [activities, setActivities] = useState<Activity[]>([]);
@@ -22,6 +87,9 @@ export function Assistant({ user, onLogout }: Props) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastState>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [tab, setTab] = useState<TabKey>("today");
+
+  const isMobile = useMediaQuery("(max-width: 1040px)");
 
   const notify = useCallback((kind: ToastKind, text: string) => {
     setToast({ kind, text });
@@ -175,6 +243,57 @@ export function Assistant({ user, onLogout }: Props) {
   );
   const remindersOn = settings?.reminders_enabled ?? true;
 
+  const proposalCard = proposal ? (
+    <ProposalCard
+      proposal={proposal}
+      busy={busy === "proposal"}
+      onConfirm={(items) => void confirmProposal(items)}
+      onDiscard={() => void discardProposal()}
+    />
+  ) : null;
+
+  const reminderBanner =
+    remindersOn && overdue.length > 0 ? (
+      <div className="reminder">
+        <span className="reminder-dot" aria-hidden />
+        有 {overdue.length} 条活动已经到点了，挑一个现在做也可以。
+      </div>
+    ) : null;
+
+  const todayPanel = (
+    <TodayList
+      activities={activities}
+      busy={busy}
+      showReminders={remindersOn}
+      onAction={(id, action) => void runAction(id, action)}
+      onGenerate={(force) => void generate(force)}
+    />
+  );
+
+  const weeklyPanel = <WeeklyPanel data={weekly} />;
+
+  const settingsPanel = (
+    <SettingsPanel value={settings} busy={busy === "settings"} onSave={(payload) => void saveSettings(payload)} />
+  );
+
+  const agentPanel = <AgentPanel notify={notify} onApplied={refreshToday} />;
+
+  /**
+   * 移动端 / APK 的对话式 Agent。桌面端用右下角浮层，手机改成 Tab 内嵌。
+   * 两个入口共用同一个 Provider 与后端 Agent，只是渲染位置不同。
+   */
+  const chatPanel = (
+    <section className="card chat-card">
+      <div className="card-head">
+        <div>
+          <h2>和助手聊聊</h2>
+          <p className="sub">它会读你的时段和已有安排，再给建议</p>
+        </div>
+      </div>
+      <AgentChatInline height="min(56vh, 480px)" />
+    </section>
+  );
+
   return (
     <div className="page">
       <header className="topbar">
@@ -208,38 +327,52 @@ export function Assistant({ user, onLogout }: Props) {
             </button>
           </section>
         </main>
+      ) : isMobile ? (
+        <main className="mobile-app">
+          <div className="mobile-panes">
+            <div className="pane" hidden={tab !== "today"}>
+              {proposalCard}
+              {reminderBanner}
+              {todayPanel}
+            </div>
+            <div className="pane" hidden={tab !== "stats"}>
+              {weeklyPanel}
+            </div>
+            <div className="pane" hidden={tab !== "settings"}>
+              {settingsPanel}
+            </div>
+            <div className="pane" hidden={tab !== "assistant"}>
+              {chatPanel}
+              {agentPanel}
+            </div>
+          </div>
+
+          <nav className="tabbar" aria-label="主导航">
+            {TABS.map((item) => (
+              <button
+                key={item.key}
+                className={tab === item.key ? "tab on" : "tab"}
+                onClick={() => setTab(item.key)}
+                aria-current={tab === item.key ? "page" : undefined}
+              >
+                {item.icon}
+                <span>{item.label}</span>
+              </button>
+            ))}
+          </nav>
+        </main>
       ) : (
         <main className="layout">
           <div className="col-main">
-            {proposal ? (
-              <ProposalCard
-                proposal={proposal}
-                busy={busy === "proposal"}
-                onConfirm={(items) => void confirmProposal(items)}
-                onDiscard={() => void discardProposal()}
-              />
-            ) : null}
-
-            {remindersOn && overdue.length > 0 ? (
-              <div className="reminder">
-                <span className="reminder-dot" aria-hidden />
-                有 {overdue.length} 条活动已经到点了，挑一个现在做也可以。
-              </div>
-            ) : null}
-
-            <TodayList
-              activities={activities}
-              busy={busy}
-              showReminders={remindersOn}
-              onAction={(id, action) => void runAction(id, action)}
-              onGenerate={(force) => void generate(force)}
-            />
-            <WeeklyPanel data={weekly} />
+            {proposalCard}
+            {reminderBanner}
+            {todayPanel}
+            {weeklyPanel}
           </div>
 
           <aside className="col-side">
-            <AgentPanel notify={notify} onApplied={refreshToday} />
-            <SettingsPanel value={settings} busy={busy === "settings"} onSave={(payload) => void saveSettings(payload)} />
+            {agentPanel}
+            {settingsPanel}
           </aside>
         </main>
       )}

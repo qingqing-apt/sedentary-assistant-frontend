@@ -71,3 +71,85 @@ CopilotKit 没有公开的会话级错误回调，Runtime 或后端挂掉时界�
 - CopilotKit 打包后首屏 chunk 约 2.4 MB，因为它自带 mermaid、代码高亮等。演示项目不拆包；要优化可以配 `build.rollupOptions.output.manualChunks`。
 - 对话面板首次加载会自动展开，点右下角按钮可收起。
 - 对话历史存在 Runtime 的内存里（`InMemoryAgentRunner`），刷新页面会丢。
+
+## 移动端（Web 响应式）
+
+宽度 ≤1040px 时自动切到移动端布局：单栏、吸顶顶栏、底部四页签（今日 / 统计 / 设置 / 助手）。桌面双栏布局不受影响，两套树由 `useMediaQuery` 分叉渲染。
+
+移动端不渲染右下角浮层（它会盖住 Tab 栏），对话式 Agent 改成「助手」页签里内嵌的 `CopilotChat` 面板，和按钮式建议放在同一页。两种入口共用同一个 Provider 与后端 Agent。
+
+## Android APK（Capacitor）
+
+用 Capacitor 把同一套 React 前端包成安卓 App，后端 API 与对话式 Agent 原样复用。
+
+### 构建步骤
+
+```bash
+# 0) 前置：JDK 21 + Android SDK（platform 35 / build-tools 35）
+#    本机已验证：JDK 21.0.13 + SDK 35
+
+# 1) 构建 Web，把「后端」和「Agent Runtime」两个地址都注入进去
+#    模拟器用 10.0.2.2（映射到宿主机 localhost）；真机改成电脑的局域网 IP
+VITE_API_BASE=http://10.0.2.2:8000 \
+VITE_RUNTIME_URL=http://10.0.2.2:3000/api/copilotkit \
+npm run build
+
+# 2) 同步到 Android 工程
+npx cap sync android
+
+# 3) 打 debug 包
+cd android
+export JAVA_HOME="/path/to/jdk-21"
+export ANDROID_HOME="/path/to/Android/Sdk"
+./gradlew assembleDebug
+
+# 产物：android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+装到手机：`adb install -r app-debug.apk`，或直接把 APK 拷进手机点击安装。
+
+### 三个服务，一个都不能少
+
+APK 里的对话式 Agent 走的是和 Web 完全相同的三层链路，**只是地址从 Vite 代理换成绝对地址**：
+
+```
+APK 的 WebView (http://localhost)
+   │  POST http://10.0.2.2:3000/api/copilotkit        ← VITE_RUNTIME_URL
+   ▼
+CopilotKit Runtime :3000  (npm run runtime，必须监听 0.0.0.0)
+   │  POST http://127.0.0.1:8000/api/agent/chat
+   ▼
+FastAPI 后端 :8000  (uvicorn --host 0.0.0.0)
+   │
+   ▼
+DeepSeek + 7 个业务工具
+```
+
+所以跑 APK 时要同时起三个进程：
+
+```bash
+cd backend   && uvicorn app.main:app --host 0.0.0.0 --port 8000   # 终端 1
+cd frontend  && npm run runtime                                   # 终端 2（:3000）
+# 终端 3 可选：只在还要用浏览器调试时才需要
+cd frontend  && npm run dev                                       # :5173
+```
+
+**Runtime 必须监听 `0.0.0.0`**。默认的 `localhost` 只绑回环，模拟器和真机都连不进来，
+表现就是对话一直转圈或者提示「连不上助手服务」。
+
+### 三个必须注意的点
+
+1. **两个地址都是构建时烧进去的**：`VITE_API_BASE`（后端）和 `VITE_RUNTIME_URL`（Agent 中转到 `src/components/AgentChat.tsx`）。换地址必须重新 `npm run build` + 覆盖 `android/app/src/main/assets/public/`。
+2. **Runtime 和 后端都要放行 APK 的 origin**。`androidScheme: "http"` 让 WebView 的 origin 变成 `http://localhost`：后端 CORS 已加白名单，Runtime 侧用 `cors({ origin: true })` 反射放行；同时 `AndroidManifest` 需要 `usesCleartextTraffic="true"`（局域网调试用 `http://`）。
+3. **Android WebView 不支持 `oklch()`**（需要 Chrome 111+，Android 15 自带的是 110）。CopilotKit v2 的主题变量全是 oklch，会让对话面板背景整条失效变成透明。`src/styles.css` 末尾已用 sRGB 覆盖成同一套色板兜底，**不要删掉那段**。
+
+### 目录说明
+
+```
+capacitor.config.ts        Capacitor 配置（appId / webDir / androidScheme）
+android/                   生成的安卓工程（可直接用 Android Studio 打开）
+runtime/server.ts          CopilotKit Runtime（Express + CORS，转发到后端 AG-UI）
+release/                   本地打包产物（已 gitignore）
+```
+
+APK 的包名是 `com.qingqing.sedentary`，应用名「久坐活动助手」，minSdk 23 / targetSdk 35。
