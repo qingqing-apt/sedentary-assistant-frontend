@@ -789,3 +789,125 @@ button[aria-label^="CopilotKit Inspector"] {
   gap: 10px;
   margin-top: 14px;
 }
+
+/* ============ 移动端布局（≤1040px）============ */
+/* 桌面仍是 .layout 双栏；手机切到 .mobile-app + 底部 Tab 栏，两个树由 JS 按宽度切换 */
+
+@media (max-width: 1040px) {
+  :root {
+    --tabbar-h: 58px;
+  }
+
+  .page {
+    padding: 0;
+  }
+
+  /* 顶部栏：压紧凑 + 吸顶 */
+  .topbar {
+    margin: 0;
+    padding: 10px 16px;
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+  }
+  .topbar .brand p {
+    display: none;
+  }
+  .topbar h1 {
+    font-size: 16px;
+  }
+  .who span {
+    display: none;
+  }
+
+  .mobile-app {
+    display: block;
+  }
+  .mobile-panes {
+    padding: 14px 14px calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px) + 24px);
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .pane {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .pane[hidden] {
+    display: none !important;
+  }
+
+  /* 卡片与控件：更贴手 */
+  .card {
+    padding: 16px;
+    border-radius: 14px;
+  }
+  .btn {
+    min-height: 44px;
+    padding: 10px 16px;
+    font-size: 14px;
+  }
+  .btn.sm {
+    min-height: 36px;
+    padding: 6px 12px;
+    font-size: 13px;
+  }
+  .activity {
+    grid-template-columns: 46px minmax(0, 1fr);
+    gap: 10px;
+  }
+  .activity .acts {
+    grid-column: 1 / -1;
+    flex-wrap: wrap;
+  }
+  .field-row {
+    flex-wrap: wrap;
+  }
+
+  /* Toast 与对话入口提到 Tab 栏上方，避免被遮挡 */
+  .toast {
+    bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px) + 14px);
+  }
+  button[aria-label="Open chat"] {
+    bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px) + 14px) !important;
+  }
+}
+
+/* 底部 Tab 栏：只在移动端由 JS 渲染，固定吸底 */
+.tabbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: calc(var(--tabbar-h, 58px) + env(safe-area-inset-bottom, 0px));
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  display: flex;
+  background: var(--card);
+  border-top: 1px solid var(--border);
+  z-index: 999;
+}
+.tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  border: 0;
+  background: none;
+  color: var(--hint);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+.tab.on {
+  color: var(--accent);
+  font-weight: 600;
+}
+.tab svg {
+  display: block;
+}

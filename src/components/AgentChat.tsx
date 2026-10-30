@@ -9,6 +9,22 @@ interface Props {
   children: ReactNode;
 }
 
+function useIsMobile(): boolean {
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== "undefined" ? window.matchMedia("(max-width: 1040px)").matches : false,
+  );
+
+  useEffect(() => {
+    const mql = window.matchMedia("(max-width: 1040px)");
+    const onChange = () => setIsMobile(mql.matches);
+    onChange();
+    mql.addEventListener("change", onChange);
+    return () => mql.removeEventListener("change", onChange);
+  }, []);
+
+  return isMobile;
+}
+
 /**
  * 对话式助手入口（Microsoft Agent Framework + AG-UI + CopilotKit）。
  *
@@ -26,6 +42,7 @@ export function AgentChat({ token, children }: Props) {
   );
 
   const [agentError, setAgentError] = useState<AgentErrorInfo>(null);
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -83,16 +100,20 @@ export function AgentChat({ token, children }: Props) {
         showDevConsole={false}
       >
         {children}
-        <CopilotPopup
-          defaultOpen={false}
-          labels={{
-            modalHeaderTitle: "活动安排助手",
-            welcomeMessageText:
-              "想怎么安排？可以问我「今天有什么安排」「下午三点以后还有空吗」，或者让我排两次。",
-            chatInputPlaceholder: "比如「下午三点以后给我排两次」",
-            chatDisclaimerText: "回答基于你自己真实的安排生成；身体不适请咨询医生。",
-          }}
-        />
+        {/* 移动端不渲染右下角浮层对话：它会盖住底部 Tab 栏、且 defaultOpen 不生效。
+            移动端用「助手」Tab 里的按钮式建议；对话式 Agent 后续做成 Tab 内嵌组件再补。 */}
+        {!isMobile && (
+          <CopilotPopup
+            defaultOpen={false}
+            labels={{
+              modalHeaderTitle: "活动安排助手",
+              welcomeMessageText:
+                "想怎么安排？可以问我「今天有什么安排」「下午三点以后还有空吗」，或者让我排两次。",
+              chatInputPlaceholder: "比如「下午三点以后给我排两次」",
+              chatDisclaimerText: "回答基于你自己真实的安排生成；身体不适请咨询医生。",
+            }}
+          />
+        )}
       </CopilotKit>
 
       {agentError && (
