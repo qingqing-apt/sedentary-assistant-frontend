@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 import type { Activity, Proposal, ProposalItem, Settings, Weekly } from "../types";
+import { AgentChatInline } from "./AgentChatInline";
 import { AgentPanel } from "./AgentPanel";
 import { ProposalCard } from "./ProposalCard";
 import { SettingsPanel } from "./SettingsPanel";
@@ -277,6 +278,22 @@ export function Assistant({ user, onLogout }: Props) {
 
   const agentPanel = <AgentPanel notify={notify} onApplied={refreshToday} />;
 
+  /**
+   * 移动端 / APK 的对话式 Agent。桌面端用右下角浮层，手机改成 Tab 内嵌。
+   * 两个入口共用同一个 Provider 与后端 Agent，只是渲染位置不同。
+   */
+  const chatPanel = (
+    <section className="card chat-card">
+      <div className="card-head">
+        <div>
+          <h2>和助手聊聊</h2>
+          <p className="sub">它会读你的时段和已有安排，再给建议</p>
+        </div>
+      </div>
+      <AgentChatInline height="min(56vh, 480px)" />
+    </section>
+  );
+
   return (
     <div className="page">
       <header className="topbar">
@@ -325,6 +342,7 @@ export function Assistant({ user, onLogout }: Props) {
               {settingsPanel}
             </div>
             <div className="pane" hidden={tab !== "assistant"}>
+              {chatPanel}
               {agentPanel}
             </div>
           </div>

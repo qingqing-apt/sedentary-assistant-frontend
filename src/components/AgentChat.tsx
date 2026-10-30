@@ -41,6 +41,13 @@ export function AgentChat({ token, children }: Props) {
     [token],
   );
 
+  /**
+   * Runtime 地址。Web 版留空时走 `/api/copilotkit`，由 Vite 代理转到 :3000；
+   * APK 里 WebView 的 origin 是 `http://localhost`，相对路径会打到 WebView 自己，
+   * 必须由构建时的 VITE_RUNTIME_URL 注入绝对地址（如 http://10.0.2.2:3000/api/copilotkit）。
+   */
+  const runtimeUrl = import.meta.env.VITE_RUNTIME_URL || "/api/copilotkit";
+
   const [agentError, setAgentError] = useState<AgentErrorInfo>(null);
   const isMobile = useIsMobile();
 
@@ -70,7 +77,7 @@ export function AgentChat({ token, children }: Props) {
         } else if (response.status >= 500) {
           setAgentError({
             message: `助手服务暂时不可用（HTTP ${response.status}）。`,
-            hint: "可能是 Runtime（:3000）或后端（:8000）没启动，请稍后重试。",
+            hint: `请确认 Runtime（${runtimeUrl}）和后端都在运行，稍后重试。`,
           });
         } else if (response.ok) {
           setAgentError(null);
@@ -79,7 +86,7 @@ export function AgentChat({ token, children }: Props) {
       } catch (error) {
         setAgentError({
           message: "连不上助手服务，消息没有发出去。",
-          hint: "请确认 Runtime（:3000）与后端（:8000）都在运行，然后重试。",
+          hint: `Runtime 地址是 ${runtimeUrl}，请确认它已启动且允许跨域。`,
         });
         throw error;
       }
@@ -88,20 +95,20 @@ export function AgentChat({ token, children }: Props) {
     return () => {
       window.fetch = originalFetch;
     };
-  }, []);
+  }, [runtimeUrl]);
 
   return (
     <>
       <CopilotKit
-        runtimeUrl="/api/copilotkit"
+        runtimeUrl={runtimeUrl}
         agent="sedentary_agent"
         headers={headers}
         useSingleEndpoint={false}
         showDevConsole={false}
       >
         {children}
-        {/* 移动端不渲染右下角浮层对话：它会盖住底部 Tab 栏、且 defaultOpen 不生效。
-            移动端用「助手」Tab 里的按钮式建议；对话式 Agent 后续做成 Tab 内嵌组件再补。 */}
+        {/* 移动端不渲染右下角浮层：它会盖住底部 Tab 栏，且 defaultOpen 不生效。
+            移动端的对话入口在「助手」Tab 里内嵌（AgentChatInline）。 */}
         {!isMobile && (
           <CopilotPopup
             defaultOpen={false}

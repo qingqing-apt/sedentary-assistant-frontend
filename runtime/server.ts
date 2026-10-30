@@ -1,4 +1,5 @@
 import express from "express";
+import cors from "cors";
 import { CopilotRuntime, InMemoryAgentRunner } from "@copilotkit/runtime/v2";
 import { createCopilotExpressHandler } from "@copilotkit/runtime/v2/express";
 import { HttpAgent } from "@ag-ui/client";
@@ -61,9 +62,30 @@ const runtime = new CopilotRuntime({
 });
 
 const app = express();
+
+/**
+ * 跨域。Web 版走 Vite 代理（同源，本不需要），但 APK 里 WebView 的 origin 是
+ * `http://localhost`（capacitor androidScheme=http），相对路径 `/api/copilotkit`
+ * 会打到 WebView 自己身上而不是这台机器，所以 APK 必须直连 `http://<host>:3000`。
+ * 一旦跨域，Authorization 就变成需要预检的请求，不放行会被浏览器层拦成
+ * `Failed to fetch`——和之前后端 CORS 漏配时的表现一模一样。
+ *
+ * origin: true 表示反射请求里的 Origin（而不是写死某几个），
+ * allowedHeaders 不设，cors 会把预检里的 Access-Control-Request-Headers 原样反射。
+ */
+app.use(
+  cors({
+    origin: true,
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    maxAge: 600,
+  }),
+);
+
 app.use(createCopilotExpressHandler({ runtime, basePath: "/api/copilotkit" }));
 
-app.listen(PORT, () => {
+app.listen(PORT, "0.0.0.0", () => {
   console.log(`CopilotKit Runtime: http://localhost:${PORT}/api/copilotkit`);
   console.log(`  -> forwards to agent: ${AGENT_URL}`);
+  console.log(`  -> listening on 0.0.0.0 (APK / 模拟器可访问)`);
 });
