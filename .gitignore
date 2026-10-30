@@ -6,4 +6,7 @@ dist/
 .DS_Store
 
 # Capacitor / Android 构建产物
-release/
+# release/ 下只保留 APK：安装包跟着分支走，别人拉下来就能直接装，不用自己配 JDK 21 + SDK 重新打包。
+# 其余（调试截图等）仍然忽略。
+release/*
+!release/*.apk
