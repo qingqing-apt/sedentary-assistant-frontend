@@ -206,6 +206,46 @@ cd frontend  && npm run dev                                       # :5173
 **Runtime 必须监听 `0.0.0.0`**。默认的 `localhost` 只绑回环，模拟器和真机都连不进来，
 表现就是对话一直转圈或者提示「连不上助手服务」。
 
+### 正式签名（release 包）
+
+debug 包用的是 Android 自动生成的调试密钥，换台机器就变，装不了覆盖升级。要分发得有自己的 key。
+
+**密钥不进仓库**：`android/keystore.properties` 和 `*.keystore` 都在 `.gitignore` 里。`build.gradle` 读不到这个文件时会**跳过签名配置**——没配密钥的机器照样能 `assembleDebug`，只是打出来的 release 没签名。这是故意的：不要为了让 CI 绿起来把密钥塞进仓库。
+
+首次生成（一次就够，之后备份好）：
+
+```bash
+cd android
+"$JAVA_HOME/bin/keytool" -genkeypair -v \
+  -keystore app/release.keystore -alias sedentary \
+  -keyalg RSA -keysize 2048 -validity 10000 \
+  -storepass "<你的密码>" -keypass "<同一个密码>" \
+  -dname "CN=久坐活动助手, OU=Demo, O=Personal, L=Beijing, ST=Beijing, C=CN"
+```
+
+写 `android/keystore.properties`（相对 `android/app/` 解析）：
+
+```properties
+storeFile=release.keystore
+storePassword=<你的密码>
+keyAlias=sedentary
+keyPassword=<同一个密码>
+```
+
+出包与验证：
+
+```bash
+cd android
+./gradlew.bat assembleRelease
+$ANDROID_HOME/build-tools/35.0.1/apksigner.bat verify -v app/build/outputs/apk/release/app-release.apk
+# → Verified using v2 scheme (APK Signature Scheme v2): true
+ls -lh app/build/outputs/apk/release/app-release.apk
+```
+
+本机实测：签名后 **7.9 MB**，比 debug 的 10.0 MB 小（debug 带符号信息）。用的是 v2 方案（v1/v3 均为 false，minSdk 24 只要求 v2 即可）。
+
+**丢了密钥的后果**：已经装过的用户无法覆盖升级，只能卸载重装（数据丢失）。所以 `release.keystore` + 密码要单独备份，别只留在这台机器上。
+
 ### 明文 HTTP 只存在于 debug 包
 
 `usesCleartextTraffic="true"` **不在** `src/main/AndroidManifest.xml` 里，而是在

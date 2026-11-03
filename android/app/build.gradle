@@ -1,5 +1,17 @@
 apply plugin: 'com.android.application'
 
+// ---------- release 签名 ----------
+// 密钥信息放在 android/keystore.properties（已 gitignore），不进仓库。
+// 文件不存在时整段跳过：没配密钥的机器照样能 assembleDebug，
+// 只是打不出签名的 release —— 不要为了让 CI 通过把密钥塞进仓库。
+def keystorePropsFile = rootProject.file("keystore.properties")
+def releaseSigningReady = false
+def keystoreProps = new Properties()
+if (keystorePropsFile.exists()) {
+    keystorePropsFile.withInputStream { keystoreProps.load(it) }
+    releaseSigningReady = keystoreProps['storeFile'] != null && file(keystoreProps['storeFile']).exists()
+}
+
 android {
     namespace = "com.qingqing.sedentary"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -16,8 +28,21 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        if (releaseSigningReady) {
+            release {
+                storeFile file(keystoreProps['storeFile'])
+                storePassword keystoreProps['storePassword']
+                keyAlias keystoreProps['keyAlias']
+                keyPassword keystoreProps['keyPassword']
+            }
+        }
+    }
     buildTypes {
         release {
+            if (releaseSigningReady) {
+                signingConfig signingConfigs.release
+            }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
