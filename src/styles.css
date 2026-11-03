@@ -14,6 +14,20 @@
   --amber: #854f0b;
   --amber-soft: #faeeda;
   --radius: 12px;
+
+  /* 安全区。两个来源依次兜底：
+     1. --safe-area-inset-*：Capacitor 8 SystemBars 插件注入的变量。
+     2. env(safe-area-inset-*)：iOS / 新版 Chromium（配合 viewport-fit=cover）。
+     都没有时取 0。
+
+     实测结论（别照抄网上的写法）：Pixel 7 / API 35 模拟器上这两个值都是 0px，
+     因为该机 WebView（Chromium < 140）下 Capacitor 已经把 WebView 原生内缩了
+     状态栏高度（411 CSS px 宽的视口，WebView 的 screenY 是 136 设备像素 ≈ 51.8 CSS px），
+     页面本身并不 edge-to-edge。所以这里的 padding 加上也不会变——它只是为
+     WebView >= 140 的机型（那边原生不再内缩、env 会变成真实数值）留的前置防护。
+     真机/Android 16 设备上要重新确认一次，别假设。 */
+  --inset-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+  --inset-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
 }
 
 * {
@@ -672,13 +686,17 @@ button[aria-label^="CopilotKit Inspector"] {
   align-items: flex-start;
   gap: 12px;
   max-width: min(520px, calc(100vw - 32px));
+  /* 提示本身也不能被切掉：内容长时内部滚动，不要撑出屏幕 */
+  max-height: 45vh;
+  overflow-y: auto;
   padding: 12px 14px;
   border: 1px solid var(--border);
   border-left: 3px solid var(--warn);
   border-radius: var(--radius);
   background: var(--card);
   box-shadow: 0 8px 24px rgb(15 23 42 / 12%);
-  z-index: 60;
+  /* 底部 Tab 栏是 999，提示要在它上面，否则被压住看不见 */
+  z-index: 1000;
 }
 
 .agent-error__body {
@@ -788,4 +806,253 @@ button[aria-label^="CopilotKit Inspector"] {
   flex-wrap: wrap;
   gap: 10px;
   margin-top: 14px;
+}
+
+/* ============ 移动端布局（≤1040px）============ */
+/* 桌面仍是 .layout 双栏；手机切到 .mobile-app + 底部 Tab 栏，两个树由 JS 按宽度切换 */
+
+@media (max-width: 1040px) {
+  :root {
+    --tabbar-h: 58px;
+  }
+
+  .page {
+    padding: 0;
+  }
+
+  /* 顶部栏：压紧凑 + 吸顶。
+     这里的 --inset-top 在本机模拟器上算出来是 0（Capacitor 已原生内缩，见文件头），
+     所以视觉上和原来的 `padding: 10px 16px` 一致；只有当真机走 edge-to-edge
+     时它才会生效。 */
+  .topbar {
+    margin: 0;
+    padding: calc(10px + var(--inset-top)) 16px 10px;
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+  }
+  .topbar .brand p {
+    display: none;
+  }
+  .topbar h1 {
+    font-size: 16px;
+  }
+  .who span {
+    display: none;
+  }
+
+  .mobile-app {
+    display: block;
+  }
+  .mobile-panes {
+    padding: 14px 14px calc(var(--tabbar-h) + var(--inset-bottom) + 24px);
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .pane {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .pane[hidden] {
+    display: none !important;
+  }
+
+  /* 卡片与控件：更贴手 */
+  .card {
+    padding: 16px;
+    border-radius: 14px;
+  }
+  .btn {
+    min-height: 44px;
+    padding: 10px 16px;
+    font-size: 14px;
+  }
+  .btn.sm {
+    min-height: 36px;
+    padding: 6px 12px;
+    font-size: 13px;
+  }
+  .activity {
+    grid-template-columns: 46px minmax(0, 1fr);
+    gap: 10px;
+  }
+  .activity .acts {
+    grid-column: 1 / -1;
+    flex-wrap: wrap;
+  }
+  .field-row {
+    flex-wrap: wrap;
+  }
+
+  /* Toast 与对话入口提到 Tab 栏上方，避免被遮挡 */
+  .toast {
+    bottom: calc(var(--tabbar-h) + var(--inset-bottom) + 14px);
+  }
+  /* 助手报错提示同理：不抬起来就会被 Tab 栏拦腰切掉，用户只看得到半句话 */
+  .agent-error {
+    bottom: calc(var(--tabbar-h) + var(--inset-bottom) + 12px);
+    left: 14px;
+    right: 14px;
+    transform: none;
+    max-width: none;
+    max-height: 38vh;
+  }
+  button[aria-label="Open chat"] {
+    bottom: calc(var(--tabbar-h) + var(--inset-bottom) + 14px) !important;
+  }
+}
+
+/* 底部 Tab 栏：只在移动端由 JS 渲染，固定吸底 */
+.tabbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: calc(var(--tabbar-h, 58px) + var(--inset-bottom));
+  padding-bottom: var(--inset-bottom);
+  display: flex;
+  background: var(--card);
+  border-top: 1px solid var(--border);
+  z-index: 999;
+}
+.tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  border: 0;
+  background: none;
+  color: var(--hint);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+.tab.on {
+  color: var(--accent);
+  font-weight: 600;
+}
+.tab svg {
+  display: block;
+}
+
+/* ---------- 移动端内嵌对话面板（助手 Tab） ---------- */
+
+/* 对话卡片：不再叠一个外层边框，交给 .chat-inline 自己描边 */
+.chat-card {
+  padding-bottom: 16px;
+}
+
+/* CopilotKit 的 Chat 组件默认按父容器撑满，这里给死高度避免和页面滚动打架 */
+.chat-inline {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.chat-inline > * {
+  height: 100%;
+}
+
+/* 内嵌面板不需要它自带的外阴影和圆角，否则和卡片叠成两层边框 */
+.chat-inline [class*="copilotChat"],
+.chat-inline [class*="CopilotChat"] {
+  box-shadow: none !important;
+  border-radius: 0 !important;
+}
+
+/* ---------- CopilotKit 主题色兜底（Android WebView 兼容） ---------- */
+
+/**
+ * CopilotKit v2 的主题变量全部用 oklch() 定义，而 oklch 要到 Chrome 111 才支持。
+ * Android 15 自带的 WebView 是 110，解析失败 → `background: var(--background)`
+ * 整条声明作废 → 对话面板背景透明，文字和背后的卡片叠在一起。
+ *
+ * 这里用 sRGB 覆盖成同一套色板（中性灰阶 + 绿色主色，和 App 自身主题一致）。
+ * 桌面浏览器本来支持 oklch，被这些值覆盖后视觉无差别。
+ */
+[data-copilotkit] {
+  --background: #ffffff;
+  --foreground: #23231f;
+  --card: #ffffff;
+  --card-foreground: #23231f;
+  --popover: #ffffff;
+  --popover-foreground: #23231f;
+  --primary: #1d9e75;
+  --primary-foreground: #ffffff;
+  --secondary: #f4f3ee;
+  --secondary-foreground: #23231f;
+  --muted: #f4f3ee;
+  --muted-foreground: #6f6e66;
+  --accent: #eaf6f1;
+  --accent-foreground: #14513d;
+  --destructive: #b42318;
+  --destructive-foreground: #ffffff;
+  --border: #e6e4dd;
+  --input: #e6e4dd;
+  --ring: #1d9e75;
+}
+
+/* ---- 每日总结 ---- */
+.daynav {
+  display: flex;
+  gap: 6px;
+}
+
+.summary {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.summary-headline {
+  margin: 0;
+  font-size: 15.5px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.summary-points {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--muted);
+}
+
+.summary-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-top: 4px;
+  border-top: 1px solid #f1efe8;
+}
+
+.summary-meta {
+  font-size: 11.5px;
+  color: var(--hint);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 1040px) {
+  /* 窄屏下四列统计会挤成两条竖排文字，改 2x2 */
+  .stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .daynav .btn {
+    min-width: 74px;
+  }
 }

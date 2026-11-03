@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api";
-import type { Activity, Proposal, ProposalItem, Settings, Weekly } from "../types";
+import type { Activity, DailySummary, Proposal, ProposalItem, Settings, Weekly } from "../types";
+import { AgentChatInline } from "./AgentChatInline";
 import { AgentPanel } from "./AgentPanel";
+import { DailySummaryPanel, shiftDay, todayDay } from "./DailySummaryPanel";
 import { ProposalCard } from "./ProposalCard";
 import { SettingsPanel } from "./SettingsPanel";
 import { Toast, type ToastKind, type ToastState } from "./Toast";
@@ -13,6 +15,70 @@ interface Props {
   onLogout: () => void;
 }
 
+/** 监听媒体查询，用来在桌面 / 移动布局间切换。 */
+function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = useState(() =>
+    typeof window !== "undefined" ? window.matchMedia(query).matches : false,
+  );
+
+  useEffect(() => {
+    const mql = window.matchMedia(query);
+    const onChange = () => setMatches(mql.matches);
+    onChange();
+    mql.addEventListener("change", onChange);
+    return () => mql.removeEventListener("change", onChange);
+  }, [query]);
+
+  return matches;
+}
+
+type TabKey = "today" | "stats" | "settings" | "assistant";
+
+const TABS: { key: TabKey; label: string; icon: JSX.Element }[] = [
+  {
+    key: "today",
+    label: "今日",
+    icon: (
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 7v5l3 2" />
+      </svg>
+    ),
+  },
+  {
+    key: "stats",
+    label: "统计",
+    icon: (
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+        <path d="M5 20V10" />
+        <path d="M12 20V4" />
+        <path d="M19 20v-7" />
+      </svg>
+    ),
+  },
+  {
+    key: "settings",
+    label: "设置",
+    icon: (
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+        <path d="M4 6h16M4 12h16M4 18h16" />
+        <circle cx="9" cy="6" r="2" fill="var(--bg)" />
+        <circle cx="15" cy="12" r="2" fill="var(--bg)" />
+        <circle cx="7" cy="18" r="2" fill="var(--bg)" />
+      </svg>
+    ),
+  },
+  {
+    key: "assistant",
+    label: "助手",
+    icon: (
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <path d="M21 12a8 8 0 0 1-8 8H5l-2 2V12a8 8 0 0 1 8-8h2a8 8 0 0 1 8 8z" />
+      </svg>
+    ),
+  },
+];
+
 export function Assistant({ user, onLogout }: Props) {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [activities, setActivities] = useState<Activity[]>([]);
@@ -22,6 +88,15 @@ export function Assistant({ user, onLogout }: Props) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastState>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [tab, setTab] = useState<TabKey>("today");
+
+  // 日报默认看昨天：今天还没过完，完成率没有意义。
+  const [summaryDay, setSummaryDay] = useState(() => shiftDay(todayDay(), -1));
+  const [daily, setDaily] = useState<DailySummary | null>(null);
+  const [dailyLoading, setDailyLoading] = useState(false);
+  const [dailyError, setDailyError] = useState<string | null>(null);
+
+  const isMobile = useMediaQuery("(max-width: 1040px)");
 
   const notify = useCallback((kind: ToastKind, text: string) => {
     setToast({ kind, text });
@@ -70,6 +145,24 @@ export function Assistant({ user, onLogout }: Props) {
     setWeekly(nextWeekly);
     setProposal(nextProposal);
   }, []);
+
+  const loadSummary = useCallback(async (day: string) => {
+    setDailyLoading(true);
+    setDailyError(null);
+    try {
+      setDaily(await api.dailySummary(day));
+    } catch (err) {
+      // 读不到就明确报错，别把上一次的日报继续留在屏幕上冒充这一天的
+      setDaily(null);
+      setDailyError(err instanceof Error ? err.message : "读取总结失败");
+    } finally {
+      setDailyLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadSummary(summaryDay);
+  }, [loadSummary, summaryDay]);
 
   // Agent 在对话面板里保存安排时，前端拿不到任何通知（工具是后端执行的），
   // 列表会一直停在旧数据上。这里用轻量轮询兜住：本地 SQLite 查询开销可忽略，
@@ -175,6 +268,94 @@ export function Assistant({ user, onLogout }: Props) {
   );
   const remindersOn = settings?.reminders_enabled ?? true;
 
+  // proposal.items 必须存在才渲染。后端一旦返回结构不对的提议单（空对象、缺字段），
+  // ProposalCard 里 proposal.items.map 会直接抛错，被 CopilotKit 的错误边界接住，
+  // 结果是**整页白屏**——2026-11-03 在 Playwright 里复现过。
+  // 宁可这张卡不显示，也不能让整个页面挂掉。
+  const hasUsableProposal = Boolean(proposal && Array.isArray(proposal.items) && proposal.items.length);
+
+  const proposalCard = hasUsableProposal && proposal ? (
+    <ProposalCard
+      proposal={proposal}
+      busy={busy === "proposal"}
+      onConfirm={(items) => void confirmProposal(items)}
+      onDiscard={() => void discardProposal()}
+    />
+  ) : null;
+
+  const reminderBanner =
+    remindersOn && overdue.length > 0 ? (
+      <div className="reminder">
+        <span className="reminder-dot" aria-hidden />
+        有 {overdue.length} 条活动已经到点了，挑一个现在做也可以。
+      </div>
+    ) : null;
+
+  const todayPanel = (
+    <TodayList
+      activities={activities}
+      busy={busy}
+      showReminders={remindersOn}
+      onAction={(id, action) => void runAction(id, action)}
+      onGenerate={(force) => void generate(force)}
+    />
+  );
+
+  const weeklyPanel = <WeeklyPanel data={weekly} />;
+
+  const generateSummary = async () => {
+    setBusy("summary");
+    try {
+      const next = await api.generateDailySummary(summaryDay);
+      setDaily(next);
+      notify("ok", "已生成这天的总结");
+    } catch (err) {
+      notify("err", err instanceof Error ? err.message : "生成总结失败");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const dailyPanel = (
+    <DailySummaryPanel
+      data={daily}
+      loading={dailyLoading}
+      error={dailyError}
+      busy={busy === "summary"}
+      canGoNext={summaryDay < todayDay()}
+      onPrev={() => setSummaryDay((day) => shiftDay(day, -1))}
+      onNext={() => setSummaryDay((day) => shiftDay(day, 1))}
+      onGenerate={() => void generateSummary()}
+      onRetry={() => void loadSummary(summaryDay)}
+    />
+  );
+
+  const settingsPanel = (
+    <SettingsPanel value={settings} busy={busy === "settings"} onSave={(payload) => void saveSettings(payload)} />
+  );
+
+  const agentPanel = <AgentPanel notify={notify} onApplied={refreshToday} />;
+
+  /**
+   * 移动端 / APK 的对话式 Agent。桌面端用右下角浮层，手机改成 Tab 内嵌。
+   * 两个入口共用同一个 Provider 与后端 Agent，只是渲染位置不同。
+   */
+  const chatPanel = (
+    <section className="card chat-card">
+      <div className="card-head">
+        <div>
+          <h2>和助手聊聊</h2>
+          {/* 空会话时 CopilotKit 不渲染 welcome 文案，一整片白，用户不知道该问什么。
+              这里常驻一行示例，比等它自己显示可靠。 */}
+          <p className="sub">
+            可以直接问：今天有什么安排 / 下午三点以后还有空吗 / 帮我排两次
+          </p>
+        </div>
+      </div>
+      <AgentChatInline height="min(44vh, 420px)" />
+    </section>
+  );
+
   return (
     <div className="page">
       <header className="topbar">
@@ -208,38 +389,54 @@ export function Assistant({ user, onLogout }: Props) {
             </button>
           </section>
         </main>
+      ) : isMobile ? (
+        <main className="mobile-app">
+          <div className="mobile-panes">
+            <div className="pane" hidden={tab !== "today"}>
+              {proposalCard}
+              {reminderBanner}
+              {todayPanel}
+            </div>
+            <div className="pane" hidden={tab !== "stats"}>
+              {dailyPanel}
+              {weeklyPanel}
+            </div>
+            <div className="pane" hidden={tab !== "settings"}>
+              {settingsPanel}
+            </div>
+            <div className="pane" hidden={tab !== "assistant"}>
+              {chatPanel}
+              {agentPanel}
+            </div>
+          </div>
+
+          <nav className="tabbar" aria-label="主导航">
+            {TABS.map((item) => (
+              <button
+                key={item.key}
+                className={tab === item.key ? "tab on" : "tab"}
+                onClick={() => setTab(item.key)}
+                aria-current={tab === item.key ? "page" : undefined}
+              >
+                {item.icon}
+                <span>{item.label}</span>
+              </button>
+            ))}
+          </nav>
+        </main>
       ) : (
         <main className="layout">
           <div className="col-main">
-            {proposal ? (
-              <ProposalCard
-                proposal={proposal}
-                busy={busy === "proposal"}
-                onConfirm={(items) => void confirmProposal(items)}
-                onDiscard={() => void discardProposal()}
-              />
-            ) : null}
-
-            {remindersOn && overdue.length > 0 ? (
-              <div className="reminder">
-                <span className="reminder-dot" aria-hidden />
-                有 {overdue.length} 条活动已经到点了，挑一个现在做也可以。
-              </div>
-            ) : null}
-
-            <TodayList
-              activities={activities}
-              busy={busy}
-              showReminders={remindersOn}
-              onAction={(id, action) => void runAction(id, action)}
-              onGenerate={(force) => void generate(force)}
-            />
-            <WeeklyPanel data={weekly} />
+            {proposalCard}
+            {reminderBanner}
+            {todayPanel}
+            {dailyPanel}
+            {weeklyPanel}
           </div>
 
           <aside className="col-side">
-            <AgentPanel notify={notify} onApplied={refreshToday} />
-            <SettingsPanel value={settings} busy={busy === "settings"} onSave={(payload) => void saveSettings(payload)} />
+            {agentPanel}
+            {settingsPanel}
           </aside>
         </main>
       )}

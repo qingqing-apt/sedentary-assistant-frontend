@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Debug 专用 manifest，只参与 debug 变体。
+
+  为什么需要它：App 里跑的是 localhost WebView，联调的后端是
+  http://10.0.2.2:8000（模拟器）或 http://192.168.x.x:8000（真机），
+  都是明文 HTTP，而 Android 9+ 默认禁止明文。
+
+  主 manifest（src/main）刻意不声明 usesCleartextTraffic，
+  所以 release 构建不会合并本文件 → 正式包保持「只允许 HTTPS」。
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application android:usesCleartextTraffic="true" />
+
+</manifest>

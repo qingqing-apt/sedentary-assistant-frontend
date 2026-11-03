@@ -46,7 +46,7 @@ export function TodayList({ activities, busy, showReminders, onAction, onGenerat
         <div className="empty">
           <p className="empty-title">今天还没有安排</p>
           <p className="empty-hint">
-            先确认右侧的工作时段和可活动时段，然后点「生成安排」按你的设置排一次。
+            先确认「设置」里的工作时段和可活动时段，然后点「生成安排」按你的设置排一次。
           </p>
         </div>
       ) : (

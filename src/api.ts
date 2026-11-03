@@ -1,5 +1,6 @@
 import type {
   Activity,
+  DailySummary,
   GenerateResult,
   Proposal,
   ProposalItem,
@@ -43,16 +44,61 @@ export function clearSession(): void {
   localStorage.removeItem(USER_KEY);
 }
 
+/**
+ * API 根地址。
+ *
+ * - Web（vite dev / 部署同域）：留空，走相对路径 `/api`，由 Vite 代理或同域反代转发。
+ * - Android APK（Capacitor）：WebView 里没有代理，必须指向真实后端地址，
+ *   构建时用 `VITE_API_BASE=http://10.0.2.2:8000`（模拟器）或局域网 IP（真机）。
+ */
+export const API_BASE = ((import.meta.env.VITE_API_BASE as string | undefined) ?? "").replace(/\/+$/, "");
+
+/**
+ * 请求超时（毫秒）。
+ *
+ * 为什么必须有：网络不可达有两种表现。后端进程没起、端口明确拒绝时，
+ * fetch 立刻失败，前端能马上显示错误；但如果中间有一层把包吃掉却不回 RST
+ * （模拟器的端口转发、公司网关、手机切网瞬间都会这样），fetch 会一直挂着，
+ * 界面就永远停在「正在读取」，用户既看不到错误也没有重试入口。
+ *
+ * 12 秒是个取舍：够慢网络下的正常请求跑完，又不至于让人以为 App 卡死。
+ */
+const TIMEOUT_MS = 12_000;
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = getToken();
-  const response = await fetch(`/api${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(init.headers ?? {}),
-    },
-  });
+
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), TIMEOUT_MS);
+
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}/api${path}`, {
+      ...init,
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(init.headers ?? {}),
+      },
+    });
+  } catch (err) {
+    // 主动 abort 和「连接被拒」要分开说，否则用户分不清是网断了还是后端没起
+    if (controller.signal.aborted) {
+      throw new ApiError(
+        "TIMEOUT",
+        `请求超时（${TIMEOUT_MS / 1000} 秒没有响应），请检查后端是否已启动、手机能否访问到这台电脑`,
+        0,
+      );
+    }
+    throw new ApiError(
+      "NETWORK",
+      "连不上后端。请确认后端已启动，且手机与电脑在同一网络、防火墙放行该端口",
+      0,
+    );
+  } finally {
+    window.clearTimeout(timer);
+  }
 
   if (!response.ok) {
     let payload: { code?: string; message?: string; field?: string } = {};
@@ -101,6 +147,16 @@ export const api = {
   skip: (id: string) => request<Activity>(`/activities/${id}/skip`, { method: "PATCH" }),
 
   weekly: () => request<Weekly>("/stats/weekly"),
+
+  /**
+   * 每日总结。不传 date 时后端默认取「昨天」。
+   * 没生成过时 `state=not_generated`、`summary=null`——这是正常返回，不是错误，
+   * 所以不要在这里抛异常，交给界面显示「尚未生成」。
+   */
+  dailySummary: (date?: string) =>
+    request<DailySummary>(`/summary/daily${date ? `?date=${date}` : ""}`),
+  generateDailySummary: (date?: string) =>
+    request<DailySummary>(`/summary/daily${date ? `?date=${date}` : ""}`, { method: "POST" }),
 
   /** 当前待确认的 Agent 建议；没有时后端返回 null。 */
   pendingProposal: () => request<Proposal | null>("/proposals/pending"),

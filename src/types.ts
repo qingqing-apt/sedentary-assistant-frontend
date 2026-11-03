@@ -95,3 +95,34 @@ export interface Proposal {
   status: "pending" | "confirmed" | "discarded" | "superseded";
   created_at: string;
 }
+
+/** 某一天的客观统计。后端每次现算，不受「有没有生成总结」影响。 */
+export interface DailyStats {
+  date: string;
+  total: number;
+  completed: number;
+  postponed: number;
+  skipped: number;
+  pending: number;
+  completion_rate: number;
+}
+
+export interface DailySummaryBody {
+  headline: string;
+  points: string[];
+  source: "rule" | "agent";
+  generated_at: string;
+}
+
+/**
+ * 每日总结。
+ *
+ * `state` 是前端唯一的分支判据：`not_generated` 时 `summary` 一定是 null，
+ * 界面必须显示「尚未生成」。不要用 `stats` 拼一段话顶上——那正是在伪造数据。
+ */
+export interface DailySummary {
+  date: string;
+  state: "generated" | "not_generated";
+  stats: DailyStats;
+  summary: DailySummaryBody | null;
+}
