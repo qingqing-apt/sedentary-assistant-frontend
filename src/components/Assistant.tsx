@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api";
-import type { Activity, Proposal, ProposalItem, Settings, Weekly } from "../types";
+import type { Activity, DailySummary, Proposal, ProposalItem, Settings, Weekly } from "../types";
 import { AgentChatInline } from "./AgentChatInline";
 import { AgentPanel } from "./AgentPanel";
+import { DailySummaryPanel, shiftDay, todayDay } from "./DailySummaryPanel";
 import { ProposalCard } from "./ProposalCard";
 import { SettingsPanel } from "./SettingsPanel";
 import { Toast, type ToastKind, type ToastState } from "./Toast";
@@ -89,6 +90,12 @@ export function Assistant({ user, onLogout }: Props) {
   const [busy, setBusy] = useState<string | null>(null);
   const [tab, setTab] = useState<TabKey>("today");
 
+  // 日报默认看昨天：今天还没过完，完成率没有意义。
+  const [summaryDay, setSummaryDay] = useState(() => shiftDay(todayDay(), -1));
+  const [daily, setDaily] = useState<DailySummary | null>(null);
+  const [dailyLoading, setDailyLoading] = useState(false);
+  const [dailyError, setDailyError] = useState<string | null>(null);
+
   const isMobile = useMediaQuery("(max-width: 1040px)");
 
   const notify = useCallback((kind: ToastKind, text: string) => {
@@ -138,6 +145,24 @@ export function Assistant({ user, onLogout }: Props) {
     setWeekly(nextWeekly);
     setProposal(nextProposal);
   }, []);
+
+  const loadSummary = useCallback(async (day: string) => {
+    setDailyLoading(true);
+    setDailyError(null);
+    try {
+      setDaily(await api.dailySummary(day));
+    } catch (err) {
+      // 读不到就明确报错，别把上一次的日报继续留在屏幕上冒充这一天的
+      setDaily(null);
+      setDailyError(err instanceof Error ? err.message : "读取总结失败");
+    } finally {
+      setDailyLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadSummary(summaryDay);
+  }, [loadSummary, summaryDay]);
 
   // Agent 在对话面板里保存安排时，前端拿不到任何通知（工具是后端执行的），
   // 列表会一直停在旧数据上。这里用轻量轮询兜住：本地 SQLite 查询开销可忽略，
@@ -272,6 +297,33 @@ export function Assistant({ user, onLogout }: Props) {
 
   const weeklyPanel = <WeeklyPanel data={weekly} />;
 
+  const generateSummary = async () => {
+    setBusy("summary");
+    try {
+      const next = await api.generateDailySummary(summaryDay);
+      setDaily(next);
+      notify("ok", "已生成这天的总结");
+    } catch (err) {
+      notify("err", err instanceof Error ? err.message : "生成总结失败");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const dailyPanel = (
+    <DailySummaryPanel
+      data={daily}
+      loading={dailyLoading}
+      error={dailyError}
+      busy={busy === "summary"}
+      canGoNext={summaryDay < todayDay()}
+      onPrev={() => setSummaryDay((day) => shiftDay(day, -1))}
+      onNext={() => setSummaryDay((day) => shiftDay(day, 1))}
+      onGenerate={() => void generateSummary()}
+      onRetry={() => void loadSummary(summaryDay)}
+    />
+  );
+
   const settingsPanel = (
     <SettingsPanel value={settings} busy={busy === "settings"} onSave={(payload) => void saveSettings(payload)} />
   );
@@ -336,6 +388,7 @@ export function Assistant({ user, onLogout }: Props) {
               {todayPanel}
             </div>
             <div className="pane" hidden={tab !== "stats"}>
+              {dailyPanel}
               {weeklyPanel}
             </div>
             <div className="pane" hidden={tab !== "settings"}>
@@ -367,6 +420,7 @@ export function Assistant({ user, onLogout }: Props) {
             {proposalCard}
             {reminderBanner}
             {todayPanel}
+            {dailyPanel}
             {weeklyPanel}
           </div>
 

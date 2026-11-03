@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 
 export default defineConfig({
@@ -18,5 +18,13 @@ export default defineConfig({
         changeOrigin: true,
       },
     },
+  },
+  test: {
+    environment: "jsdom",
+    globals: true,
+    setupFiles: ["./src/test/setup.ts"],
+    include: ["src/**/*.test.{ts,tsx}"],
+    // 组件里的 matchMedia / ResizeObserver 在 jsdom 里不存在，统一在 setup 里补
+    restoreMocks: true,
   },
 });

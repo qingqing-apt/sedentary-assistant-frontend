@@ -14,6 +14,20 @@
   --amber: #854f0b;
   --amber-soft: #faeeda;
   --radius: 12px;
+
+  /* 安全区。两个来源依次兜底：
+     1. --safe-area-inset-*：Capacitor 8 SystemBars 插件注入的变量。
+     2. env(safe-area-inset-*)：iOS / 新版 Chromium（配合 viewport-fit=cover）。
+     都没有时取 0。
+
+     实测结论（别照抄网上的写法）：Pixel 7 / API 35 模拟器上这两个值都是 0px，
+     因为该机 WebView（Chromium < 140）下 Capacitor 已经把 WebView 原生内缩了
+     状态栏高度（411 CSS px 宽的视口，WebView 的 screenY 是 136 设备像素 ≈ 51.8 CSS px），
+     页面本身并不 edge-to-edge。所以这里的 padding 加上也不会变——它只是为
+     WebView >= 140 的机型（那边原生不再内缩、env 会变成真实数值）留的前置防护。
+     真机/Android 16 设备上要重新确认一次，别假设。 */
+  --inset-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+  --inset-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
 }
 
 * {
@@ -802,10 +816,13 @@ button[aria-label^="CopilotKit Inspector"] {
     padding: 0;
   }
 
-  /* 顶部栏：压紧凑 + 吸顶 */
+  /* 顶部栏：压紧凑 + 吸顶。
+     这里的 --inset-top 在本机模拟器上算出来是 0（Capacitor 已原生内缩，见文件头），
+     所以视觉上和原来的 `padding: 10px 16px` 一致；只有当真机走 edge-to-edge
+     时它才会生效。 */
   .topbar {
     margin: 0;
-    padding: 10px 16px;
+    padding: calc(10px + var(--inset-top)) 16px 10px;
     position: sticky;
     top: 0;
     z-index: 30;
@@ -826,7 +843,7 @@ button[aria-label^="CopilotKit Inspector"] {
     display: block;
   }
   .mobile-panes {
-    padding: 14px 14px calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px) + 24px);
+    padding: 14px 14px calc(var(--tabbar-h) + var(--inset-bottom) + 24px);
     display: flex;
     flex-direction: column;
     gap: 14px;
@@ -869,10 +886,10 @@ button[aria-label^="CopilotKit Inspector"] {
 
   /* Toast 与对话入口提到 Tab 栏上方，避免被遮挡 */
   .toast {
-    bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px) + 14px);
+    bottom: calc(var(--tabbar-h) + var(--inset-bottom) + 14px);
   }
   button[aria-label="Open chat"] {
-    bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px) + 14px) !important;
+    bottom: calc(var(--tabbar-h) + var(--inset-bottom) + 14px) !important;
   }
 }
 
@@ -882,8 +899,8 @@ button[aria-label^="CopilotKit Inspector"] {
   left: 0;
   right: 0;
   bottom: 0;
-  height: calc(var(--tabbar-h, 58px) + env(safe-area-inset-bottom, 0px));
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+  height: calc(var(--tabbar-h, 58px) + var(--inset-bottom));
+  padding-bottom: var(--inset-bottom);
   display: flex;
   background: var(--card);
   border-top: 1px solid var(--border);
@@ -969,4 +986,60 @@ button[aria-label^="CopilotKit Inspector"] {
   --border: #e6e4dd;
   --input: #e6e4dd;
   --ring: #1d9e75;
+}
+
+/* ---- 每日总结 ---- */
+.daynav {
+  display: flex;
+  gap: 6px;
+}
+
+.summary {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.summary-headline {
+  margin: 0;
+  font-size: 15.5px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.summary-points {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--muted);
+}
+
+.summary-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-top: 4px;
+  border-top: 1px solid #f1efe8;
+}
+
+.summary-meta {
+  font-size: 11.5px;
+  color: var(--hint);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 1040px) {
+  /* 窄屏下四列统计会挤成两条竖排文字，改 2x2 */
+  .stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .daynav .btn {
+    min-width: 74px;
+  }
 }
