@@ -86,6 +86,29 @@ export function AgentChat({ token, children }: Props) {
   const [agentError, setAgentError] = useState<AgentErrorInfo>(null);
   const isMobile = useIsMobile();
 
+  /**
+   * 打包时漏注入 VITE_RUNTIME_URL 的兜底。
+   *
+   * Web 版退化到 `/api/copilotkit` 有 Vite 代理兜着，看不出来；但 APK 里 WebView
+   * 的 origin 是 `http://localhost`，这个相对路径会打到 Capacitor 自带的本地服务，
+   * 换来一张 **200 的 index.html**——不报错、不抛异常，消息就这么没了。
+   * 2026-11-03 的验收就是栽在这里。
+   *
+   * 所以进「助手」页时先自查一次：在原生容器里却没配绝对地址，直接告诉用户，
+   * 不要等点了发送才让消息静默消失。
+   */
+  useEffect(() => {
+    const isNative =
+      typeof window !== "undefined" &&
+      Boolean((window as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.());
+    if (isNative && !import.meta.env.VITE_RUNTIME_URL) {
+      setAgentError({
+        message: "这个安装包没有配置助手服务地址，对话发不出去。",
+        hint: "构建时缺了 VITE_RUNTIME_URL。用 demo 脚本的 -Build 重新打包，或按 README 同时注入两个地址。",
+      });
+    }
+  }, []);
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     const originalFetch = window.fetch.bind(window);
@@ -115,7 +138,21 @@ export function AgentChat({ token, children }: Props) {
             hint: `请确认 Runtime（${runtimeUrl}）和后端都在运行，稍后重试。`,
           });
         } else if (response.ok) {
-          setAgentError(null);
+          // 200 不代表成功。APK 里 WebView 的本地服务对未知路径会回 200 + index.html，
+          // 如果 runtimeUrl 指错地方（比如漏了 VITE_RUNTIME_URL，退化成相对路径），
+          // 拿到的就是一张网页：状态码漂亮，消息却丢了，界面上一点痕迹都没有。
+          // 按 Content-Type 判真伪，别信状态码。
+          const ctype = response.headers.get("content-type") ?? "";
+          const isAgentPayload =
+            ctype.includes("json") || ctype.includes("event-stream");
+          if (isAgentPayload) {
+            setAgentError(null);
+          } else {
+            setAgentError({
+              message: "助手服务地址不对，消息没有发出去。",
+              hint: `这个地址返回的是网页而不是接口数据（${runtimeUrl}）。构建时要用 VITE_RUNTIME_URL 指向 CopilotKit Runtime。`,
+            });
+          }
         }
         return response;
       } catch (error) {
