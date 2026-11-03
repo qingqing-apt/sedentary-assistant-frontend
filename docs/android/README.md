@@ -36,7 +36,8 @@
 | 6 | 关掉重开 → 登录态与数据 | ✅ token 存在 localStorage，冷启动直接进主界面，活动/日报仍从服务端读 | `12-relaunch-persisted-small.png` |
 | 7 | 断开 Live Reload 后仍能启动 | ✅ 全程未使用 `server.url`，所有截图都是打包资源版本 | 全部截图 |
 
-横竖屏：`15-landscape-small.png` 记录横屏 1080×768，无横向溢出，卡片与 Tab 栏正常。
+横竖屏：两台都转了横屏。`15-landscape-small.png`（1080×768）与 `24-big-landscape.png`（2400×1080），
+均无横向溢出；顶部栏与底部 Tab 栏位置正常，列表在 Tab 栏之上滚动，最后一条能完整露出。
 
 ---
 
