@@ -170,6 +170,13 @@ cd android
 
 装到设备：`adb install -r app-debug.apk`。
 
+> **两个地址都要注入，少一个就是两个不同的故障。**
+>
+> - 只漏 `VITE_API_BASE` → 登录、列表、日报全部连不上，**12 秒后**会明确报错（看得见）。
+> - 只漏 `VITE_RUNTIME_URL` → 前面都正常，**只有「助手」页签发消息会静默消失**：`runtimeUrl` 退化成相对路径 `/api/copilotkit`，在 WebView 里打到 Capacitor 自带本地服务，拿到一张 **200 的 index.html**，不报错、不超时。
+>
+> 第二种是 2026-11-03 验收被打回的直接原因。`AgentChat` 现在有两道兜底（按 Content-Type 判真伪 + 原生环境启动自查），但它只能提示，不能替你把地址配对。
+
 ### 三个服务，一个都不能少
 
 APK 里的对话式 Agent 走的是和 Web 完全相同的三层链路，**只是地址从 Vite 代理换成绝对地址**：
