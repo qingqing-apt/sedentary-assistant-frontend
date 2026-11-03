@@ -268,7 +268,13 @@ export function Assistant({ user, onLogout }: Props) {
   );
   const remindersOn = settings?.reminders_enabled ?? true;
 
-  const proposalCard = proposal ? (
+  // proposal.items 必须存在才渲染。后端一旦返回结构不对的提议单（空对象、缺字段），
+  // ProposalCard 里 proposal.items.map 会直接抛错，被 CopilotKit 的错误边界接住，
+  // 结果是**整页白屏**——2026-11-03 在 Playwright 里复现过。
+  // 宁可这张卡不显示，也不能让整个页面挂掉。
+  const hasUsableProposal = Boolean(proposal && Array.isArray(proposal.items) && proposal.items.length);
+
+  const proposalCard = hasUsableProposal && proposal ? (
     <ProposalCard
       proposal={proposal}
       busy={busy === "proposal"}

@@ -35,6 +35,9 @@ export default defineConfig({
     },
   },
   server: {
+    // 显式绑 127.0.0.1：默认的 localhost 在 Windows 上可能只解析到 ::1，
+    // 导致 Playwright / curl 连 127.0.0.1 时被拒（实测过）。
+    host: '127.0.0.1',
     port: 5173,
     proxy: {
       // CopilotKit Runtime（Node Express，端口 3000）必须放在 /api 之前，

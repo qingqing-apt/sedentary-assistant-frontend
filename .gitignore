@@ -10,3 +10,8 @@ dist/
 # 其余（调试截图等）仍然忽略。
 release/*
 !release/*.apk
+
+# Playwright
+test-results/
+playwright-report/
+blob-report/
