@@ -42,14 +42,17 @@ VITE_API_BASE=http://192.168.x.x:8000 npm run build # 真机 → 局域网 IP
 
 | # | 问题 | 文件 |
 |---|---|---|
-| 1 | 状态栏压住吸顶标题（Android 15 edge-to-edge） | `src/styles.css` |
-| 2 | 后端不可达时永久转圈，等不到错误 | `src/api.ts` |
-| 3 | 空状态文案指向手机上不存在的「右侧」 | `src/components/TodayList.tsx` |
-| 4 | 明文 HTTP 会跟着进 release 包 | `android/app/src/{main,debug}/AndroidManifest.xml` |
+| 1 | 后端不可达时永久转圈，等不到错误 | `src/api.ts` |
+| 2 | 空状态文案指向手机上不存在的「右侧」 | `src/components/TodayList.tsx` |
+| 3 | 明文 HTTP 会跟着进 release 包 | `android/app/src/{main,debug}/AndroidManifest.xml` |
 
-每条都有：复现设备、原因、修改点、修复前后截图，见 `docs/android/README.md`。第 1、2 条的完整证据链：
+另有一处**未复现**、按防御性写法处理的：状态栏安全区。实测这台机器上
+`--safe-area-inset-top` 与 `env(safe-area-inset-top)` 都是 `0px`，WebView 已被 Capacitor
+原生内缩了 51.8 CSS px，页面不是 edge-to-edge，所以「标题被状态栏压住」并没有发生。
+改动保留为 WebView ≥ 140 机型的前置防护，注释里写了实测数据。详细过程见修复记录第 1 条。
 
-- 安全区：`docs/android/01-login-small.png`（修前标题被状态栏压住）→ `04-today-small.png` / `22-big-today.png`（修后）
+每条都有：复现设备、原因、修改点、修复前后证据：
+
 - 超时：`docs/android/13-backend-down-error-small.png`（12 秒后出错误 + 重试）→ `14-recovered-small.png`（后端恢复后点重试正常）
 
 ### 新增功能：每日总结
