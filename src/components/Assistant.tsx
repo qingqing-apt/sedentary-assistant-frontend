@@ -339,10 +339,14 @@ export function Assistant({ user, onLogout }: Props) {
       <div className="card-head">
         <div>
           <h2>和助手聊聊</h2>
-          <p className="sub">它会读你的时段和已有安排，再给建议</p>
+          {/* 空会话时 CopilotKit 不渲染 welcome 文案，一整片白，用户不知道该问什么。
+              这里常驻一行示例，比等它自己显示可靠。 */}
+          <p className="sub">
+            可以直接问：今天有什么安排 / 下午三点以后还有空吗 / 帮我排两次
+          </p>
         </div>
       </div>
-      <AgentChatInline height="min(56vh, 480px)" />
+      <AgentChatInline height="min(44vh, 420px)" />
     </section>
   );
 

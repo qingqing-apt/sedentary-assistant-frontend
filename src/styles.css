@@ -686,13 +686,17 @@ button[aria-label^="CopilotKit Inspector"] {
   align-items: flex-start;
   gap: 12px;
   max-width: min(520px, calc(100vw - 32px));
+  /* 提示本身也不能被切掉：内容长时内部滚动，不要撑出屏幕 */
+  max-height: 45vh;
+  overflow-y: auto;
   padding: 12px 14px;
   border: 1px solid var(--border);
   border-left: 3px solid var(--warn);
   border-radius: var(--radius);
   background: var(--card);
   box-shadow: 0 8px 24px rgb(15 23 42 / 12%);
-  z-index: 60;
+  /* 底部 Tab 栏是 999，提示要在它上面，否则被压住看不见 */
+  z-index: 1000;
 }
 
 .agent-error__body {
@@ -887,6 +891,15 @@ button[aria-label^="CopilotKit Inspector"] {
   /* Toast 与对话入口提到 Tab 栏上方，避免被遮挡 */
   .toast {
     bottom: calc(var(--tabbar-h) + var(--inset-bottom) + 14px);
+  }
+  /* 助手报错提示同理：不抬起来就会被 Tab 栏拦腰切掉，用户只看得到半句话 */
+  .agent-error {
+    bottom: calc(var(--tabbar-h) + var(--inset-bottom) + 12px);
+    left: 14px;
+    right: 14px;
+    transform: none;
+    max-width: none;
+    max-height: 38vh;
   }
   button[aria-label="Open chat"] {
     bottom: calc(var(--tabbar-h) + var(--inset-bottom) + 14px) !important;
