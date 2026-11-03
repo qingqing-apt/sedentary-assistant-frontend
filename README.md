@@ -33,13 +33,43 @@ src/
     AgentChat.tsx     CopilotKit Provider + 对话面板 + 连接失败兜底
     Assistant.tsx     页面容器：加载 / 失败 / 正常三态
     TodayList.tsx     今日安排 + 完成/推迟/今天不方便
+    DailySummaryPanel.tsx 每日总结（未生成 / 已生成两态 + 前后一天切换）
     WeeklyPanel.tsx   本周统计 + 每日完成条
     SettingsPanel.tsx 工作时段、可活动时段、免打扰、提醒偏好
     AgentPanel.tsx    按钮式建议：输入 → 建议 → 逐条取舍 → 确认保存
     Toast.tsx         轻提示
 runtime/
   server.ts           CopilotKit Runtime（Express），转发到后端 /api/agent/chat
+test/
+  setup.ts            jsdom 缺失的 matchMedia / ResizeObserver 兜底
+  api.test.ts         地址注入、错误透传、401 清理、超时
+  login.test.tsx      表单校验、错误提示、重复提交
+  daily-summary.test.tsx 未生成态不许伪造内容、日期换算
 ```
+
+## 每日总结（按天回看）
+
+「统计」页签顶部是 `DailySummaryPanel`，默认看**昨天**（今天还没过完，完成率没有意义），可前后翻一天。
+
+后端 `GET /api/summary/daily?date=YYYY-MM-DD` 返回 `state` 与 `stats` 两块，语义严格分开：
+
+- `stats`（计划/完成/推迟/跳过/完成率）**每次从 activities 现算**，和有没有生成过总结无关。
+- `state` 只有 `generated` / `not_generated`。没生成过时 `summary` 必为 `null`，界面显示「这天还没有生成总结」+ 生成按钮，**不会拿 stats 拼一段话顶上**。
+
+`POST` 同一个地址才会真正生成并落库（`daily_summaries` 表，只存「生成过的」）。当前生成器是规则版（`source: "rule"`，按完成率分档给结论），不调模型——理由是总结要能被测试断言，也要在没配 API Key 的机器上照常工作；`source` 字段留给以后接模型生成。
+
+## 前端测试
+
+```bash
+npm run test          # 25 个用例，串行跑
+npm run test:parallel # 并行（本机沙箱里 worker 写临时目录会被拒，只会跑掉第一个文件）
+```
+
+`test` 默认带 `--no-file-parallelism`：沙箱/部分 CI 环境下并行 worker 写
+`Temp/vitest/...` 会报 `EPERM`，表现是「只跑了一个测试文件却不报错」——这种假绿比慢几秒危险得多。
+3 个文件串行也就 2 秒。
+
+覆盖的是「手机端最容易坏、又最难在真机上定位」的那部分：API 地址注入、错误文案、超时、登录表单校验、日报的未生成/已生成分支。
 
 ## 两条 Agent 入口的界面落点
 
@@ -94,18 +124,35 @@ CopilotKit 没有公开的会话级错误回调，Runtime 或后端挂掉时界�
 
 移动端不渲染右下角浮层（它会盖住 Tab 栏），对话式 Agent 改成「助手」页签里内嵌的 `CopilotChat` 面板，和按钮式建议放在同一页。两种入口共用同一个 Provider 与后端 Agent。
 
-## Android APK（Capacitor）
+## Android APK（Capacitor 8）
 
-用 Capacitor 把同一套 React 前端包成安卓 App，后端 API 与对话式 Agent 原样复用。
+用 Capacitor 8 把同一套 React 前端包成安卓 App，后端 API 与对话式 Agent 原样复用。
+
+### 环境要求（Capacitor 8 抬高了门槛）
+
+| 项 | Capacitor 7（旧） | **Capacitor 8（当前）** |
+|---|---|---|
+| Node | 18+ | **22+** |
+| JDK | 21 | 21（不变） |
+| Android Studio | 2024.2.1+ | **Otter 2025.2.1+**（本机没装，走 CLI，见下） |
+| compileSdk / targetSdk | 35 | **36** |
+| minSdk | 23 | **24** |
+| AGP | 8.7.2 | **8.13.0** |
+| Gradle | 8.11.1 | **8.14.3** |
+
+本机实际验证环境：Node 22.22.2 + JDK 21.0.13（`~/.jdks/jdk-21.0.13+9`）+ SDK platform 36 / build-tools 35.0.1。
+**没装 Android Studio**：用命令行 Gradle 构建，SDK 组件由 AGP 自动下载补齐（`platforms/android-36` 就是这么来的）。
 
 ### 构建步骤
 
 ```bash
-# 0) 前置：JDK 21 + Android SDK（platform 35 / build-tools 35）
-#    本机已验证：JDK 21.0.13 + SDK 35
+# 0) 环境变量（每次开新终端都要设；Windows 上路径用反斜杠）
+export JAVA_HOME="C:\Users\<you>\.jdks\jdk-21.0.13+9"
+export ANDROID_HOME="C:\Users\<you>\AppData\Local\Android\Sdk"
+export ANDROID_SDK_ROOT="$ANDROID_HOME"
 
-# 1) 构建 Web，把「后端」和「Agent Runtime」两个地址都注入进去
-#    模拟器用 10.0.2.2（映射到宿主机 localhost）；真机改成电脑的局域网 IP
+# 1) 构建 Web，把两个地址烧进去
+#    模拟器用 10.0.2.2（映射到宿主机）；真机改成电脑的局域网 IP
 VITE_API_BASE=http://10.0.2.2:8000 \
 VITE_RUNTIME_URL=http://10.0.2.2:3000/api/copilotkit \
 npm run build
@@ -115,14 +162,13 @@ npx cap sync android
 
 # 3) 打 debug 包
 cd android
-export JAVA_HOME="/path/to/jdk-21"
-export ANDROID_HOME="/path/to/Android/Sdk"
-./gradlew assembleDebug
+./gradlew.bat assembleDebug          # Windows 用 .bat，见「六个坑」第 1 条
+# macOS / Linux: ./gradlew assembleDebug
 
 # 产物：android/app/build/outputs/apk/debug/app-debug.apk
 ```
 
-装到手机：`adb install -r app-debug.apk`，或直接把 APK 拷进手机点击安装。
+装到设备：`adb install -r app-debug.apk`。
 
 ### 三个服务，一个都不能少
 
@@ -153,19 +199,74 @@ cd frontend  && npm run dev                                       # :5173
 **Runtime 必须监听 `0.0.0.0`**。默认的 `localhost` 只绑回环，模拟器和真机都连不进来，
 表现就是对话一直转圈或者提示「连不上助手服务」。
 
-### 三个必须注意的点
+### 明文 HTTP 只存在于 debug 包
 
-1. **两个地址都是构建时烧进去的**：`VITE_API_BASE`（后端）和 `VITE_RUNTIME_URL`（Agent 中转到 `src/components/AgentChat.tsx`）。换地址必须重新 `npm run build` + 覆盖 `android/app/src/main/assets/public/`。
-2. **Runtime 和 后端都要放行 APK 的 origin**。`androidScheme: "http"` 让 WebView 的 origin 变成 `http://localhost`：后端 CORS 已加白名单，Runtime 侧用 `cors({ origin: true })` 反射放行；同时 `AndroidManifest` 需要 `usesCleartextTraffic="true"`（局域网调试用 `http://`）。
-3. **Android WebView 不支持 `oklch()`**（需要 Chrome 111+，Android 15 自带的是 110）。CopilotKit v2 的主题变量全是 oklch，会让对话面板背景整条失效变成透明。`src/styles.css` 末尾已用 sRGB 覆盖成同一套色板兜底，**不要删掉那段**。
+`usesCleartextTraffic="true"` **不在** `src/main/AndroidManifest.xml` 里，而是在
+`src/debug/AndroidManifest.xml`。原因：主清单里的这项配置会同时进入 release 包，
+把「只允许 HTTPS」的生产约束一起放开了。
+
+验证方式（不需要真机）：
+
+```bash
+cd android
+./gradlew.bat processDebugMainManifest processReleaseMainManifest
+grep -o 'usesCleartextTraffic="[a-z]*"' app/build/intermediates/merged_manifest/debug/processDebugMainManifest/AndroidManifest.xml
+# → usesCleartextTraffic="true"
+grep -o 'usesCleartextTraffic="[a-z]*"' app/build/intermediates/merged_manifest/release/processReleaseMainManifest/AndroidManifest.xml
+# → 无输出：release 不允许明文
+```
+
+### 安全区：先测，再决定要不要补
+
+Capacitor 8 / targetSdk 36 在 Android 15+ 上按文档是强制 edge-to-edge，但**本机实测不是**：
+在 API 35 模拟器上，Capacitor 的 SystemBars 插件已经把 WebView 原生内缩了状态栏高度，
+`--safe-area-inset-top` 和 `env(safe-area-inset-top)` 读出来都是 `0px`。
+
+所以 `src/styles.css` 里的 `--inset-top` / `--inset-bottom` 在这台机器上不产生任何视觉差异，
+它是留给 **WebView ≥ 140**（原生不再内缩、`env` 才会给真实值）机型的前置防护：
+
+```css
+--inset-top:    var(--safe-area-inset-top,    env(safe-area-inset-top, 0px));
+--inset-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+```
+
+不要在 `.topbar` 里写死像素补丁——换机型必错。改之前先用 CDP 读一次真实值：
+
+```bash
+PID=$(adb shell pidof com.qingqing.sedentary)
+adb forward tcp:9222 localabstract:webview_devtools_remote_$PID
+curl -s --noproxy '*' http://127.0.0.1:9222/json   # 拿到 webSocketDebuggerUrl
+# 再用 CDP 的 Runtime.evaluate 读
+# getComputedStyle(document.documentElement).getPropertyValue('--safe-area-inset-top')
+```
+
+### 六个坑（都是本机实测踩到的）
+
+1. **Git Bash 里 `./gradlew` 会卡在 "Starting a Gradle Daemon"**：MSYS 下这个 shell 脚本会报
+   `xargs: assertion "bc_ctl.arg_max >= LINE_MAX" failed` 然后无声挂住。改用 `cmd //c gradlew.bat`。
+2. **`services.gradle.org` 在国内几乎不可用**（实测 36 KB/s，214MB 要几小时）：换腾讯云镜像
+   `https://mirrors.cloud.tencent.com/gradle/gradle-8.14.3-all.zip`，把 zip 直接放进
+   `~/.gradle/wrapper/dists/gradle-8.14.3-all/<hash>/` 即可，**不用改仓库里的 `distributionUrl`**。
+3. **新建的 AVD 首次启动 wifi 不自动连**：`ip route` 是空的，`10.0.2.2` 自然不可达，
+   表现是 App 里 `Failed to fetch`。`adb shell cmd wifi connect-network AndroidWifi open` 解决。
+4. **模拟器里 `10.0.2.2` 走 QEMU NAT，后端重启后可能挂住不回 RST**：ping 通但 HTTP 超时，
+   重启一下 wifi（`svc wifi disable/enable`）就恢复。这也是 API 层加 12 秒超时的原因。
+5. **本机 SDK 里没有 `cmdline-tools`** 时 `sdkmanager` / `avdmanager` 都不可用，
+   建 AVD 只能手搓配置。装一份即可：解压后放到 `$ANDROID_HOME/cmdline-tools/latest`。
+6. **并行跑测试时可能只跑第一个文件，还不报错**：沙箱/部分 CI 环境下 vitest 的 worker
+   写临时目录会被拒（`EPERM ... Temp/.../web/...`），剩下的文件直接不加载。`test` 脚本
+   已经默认加 `--no-file-parallelism`，要并行用 `npm run test:parallel`。
 
 ### 目录说明
 
 ```
 capacitor.config.ts        Capacitor 配置（appId / webDir / androidScheme）
 android/                   生成的安卓工程（可直接用 Android Studio 打开）
+android/app/src/debug/     仅 debug 生效的清单（明文 HTTP 放行）
 runtime/server.ts          CopilotKit Runtime（Express + CORS，转发到后端 AG-UI）
-release/                   本地打包产物（已 gitignore）
+docs/android/              联调截图与问题记录
+release/                   本地打包产物（已 gitignore，只保留 .apk）
 ```
 
-APK 的包名是 `com.qingqing.sedentary`，应用名「久坐活动助手」，minSdk 23 / targetSdk 35。
+APK 的包名是 `com.qingqing.sedentary`，应用名「久坐活动助手」，minSdk 24 / targetSdk 36。
+
