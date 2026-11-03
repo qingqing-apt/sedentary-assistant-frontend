@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
-import { CopilotRuntime, InMemoryAgentRunner } from "@copilotkit/runtime/v2";
+import { CopilotRuntime } from "@copilotkit/runtime/v2";
+import { DurableAgentRunner } from "./durable-runner.js";
 import { createCopilotExpressHandler } from "@copilotkit/runtime/v2/express";
 import { HttpAgent } from "@ag-ui/client";
 
@@ -52,7 +53,9 @@ const runtime = new CopilotRuntime({
     // 前端 <CopilotKit agent="sedentary_agent"> 通过这个标识找到后端 Agent
     sedentary_agent: new HttpAgent({ url: AGENT_URL }),
   },
-  runner: new InMemoryAgentRunner(),
+  // 落盘的 runner：重启 Runtime 后历史还在。
+  // 默认写到 frontend/.runtime-data/threads（已 gitignore）。
+  runner: new DurableAgentRunner(process.env.THREADS_DIR || ".runtime-data/threads"),
   // 按登录用户隔离线程：不同账号的对话历史互不可见
   identifyUser: (request) => {
     const id = getUserId(request);

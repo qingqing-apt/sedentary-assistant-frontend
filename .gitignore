@@ -15,3 +15,6 @@ release/*
 test-results/
 playwright-report/
 blob-report/
+
+# CopilotKit 线程历史（落盘文件，不进仓库）
+.runtime-data/

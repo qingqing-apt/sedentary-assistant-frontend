@@ -112,11 +112,21 @@ CopilotKit 没有公开的会话级错误回调，Runtime 或后端挂掉时界�
 | 刷新 / 关标签页再开 | **保留**（threadId 从 localStorage 恢复） |
 | **杀掉 App 进程再打开（APK）** | **保留**（已实测，见 `docs/screenshots/06-apk-context-memory.png`） |
 | 换个用户登录 | 互不可见（threadId 按用户隔离） |
-| 重启 Runtime（`npm run runtime`） | **丢失** |
+| 重启 Runtime（`npm run runtime`） | **保留**（`DurableAgentRunner` 落盘，已实测） |
 
-最后一行是当前架构的边界，不是 bug：`@copilotkit/runtime` 只提供 `InMemoryAgentRunner`，历史实体在进程内存里。要彻底解决有两条路——自己实现 `AgentRunner` 接口把 thread 落 SQLite/文件，或者改成前端每次带全量 messages 给后端。
+### 历史怎么落盘的（`runtime/durable-runner.ts`）
 
-这也意味着：**改完 `runtime/server.ts` 重启 Runtime 后，历史会清空**，这是预期行为。后端重启不影响（历史不在后端）。
+CopilotKit 官方只给了 `InMemoryAgentRunner`，历史在进程内存里，重启就没。两条官方路线是接它的 Intelligence 托管后端，或自己实现 `AgentRunner`（4 个抽象方法 + 线程所有权 + 运行上限 + 事件 compact，约 500 行）。
+
+这里走的是第三条：**包一层**。`InMemoryAgentRunner` 的所有实例共享一个模块级 store，包作者把它以 `ɵGLOBAL_STORE` 导出了（注释原话：so tests can inspect the exact store the runner writes to）。于是：
+
+- **写**：重写 `run()`，用 rxjs 的 `finalize` 在每轮结束（完成 / 出错 / 被打断都会走）把该线程的 `messagesSnapshot` + `historicRuns` 整体写盘，原子 rename 避免半截文件。
+- **读**：启动时读 `.runtime-data/threads/*.json`，塞回 `ɵGLOBAL_STORE`。
+- **清**：重写 `clearThreads()`，同步删盘，否则下次启动历史又回来。
+
+`ɵ` 前缀是内部 API，所以做了三层兜底：字段不存在就跳过该线程、读写的任何异常只 warn 不抛（落盘失败是降级，回复出不来才是故障）、一个线程文件坏了不影响其它线程。**升级 CopilotKit 后必须跑一次 `npm run verify:threads`**——它真的会杀掉 Runtime 再拉起来验证。
+
+历史目录默认 `.runtime-data/threads`（已 gitignore），可用 `THREADS_DIR` 环境变量改。这个目录会随聊天增长，目前没有自动清理，演示前想清空直接删掉即可。
 
 ## 移动端（Web 响应式）
 
