@@ -8,8 +8,8 @@
     "runtime": "tsx runtime/server.ts",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test": "vitest run",
-    "test:serial": "vitest run --no-file-parallelism",
+    "test": "vitest run --no-file-parallelism",
+    "test:parallel": "vitest run",
     "test:watch": "vitest"
   },
   "dependencies": {
