@@ -18,7 +18,7 @@
 | 构建 | AGP 8.13.0 + Gradle 8.14.3 + JDK 21.0.13（Temurin） |
 | SDK | platform-36 + build-tools 35.0.1（AGP 自动补齐 platform 36） |
 | 后端地址 | `VITE_API_BASE=http://10.0.2.2:8000`（模拟器 → 宿主机） |
-| 无 Android Studio | 全程 `gradlew.bat assembleDebug` + `adb`，无 IDE |
+| Android Studio | 已装 2026.2.2.8（`C://Program Files\Android\Android Studio`）；但构建走 `gradlew.bat` + `adb`，不依赖 IDE |
 
 > 只用了模拟器，没有实体设备。两个 AVD 的分辨率与 dpi 都不同，能覆盖「4.7″ 窄屏」与「6.1″ 常规屏」的差异，但**触屏手感、真实软键盘高度、厂商 ROM 的 WebView 版本差异**测不到，这是本次验收的已知盲区。
 

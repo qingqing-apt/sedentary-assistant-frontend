@@ -134,14 +134,14 @@ CopilotKit 没有公开的会话级错误回调，Runtime 或后端挂掉时界�
 |---|---|---|
 | Node | 18+ | **22+** |
 | JDK | 21 | 21（不变） |
-| Android Studio | 2024.2.1+ | **Otter 2025.2.1+**（本机没装，走 CLI，见下） |
+| Android Studio | 2024.2.1+ | **Otter 2025.2.1+**（本机已装 2026.2.2.8，构建仍走 CLI） |
 | compileSdk / targetSdk | 35 | **36** |
 | minSdk | 23 | **24** |
 | AGP | 8.7.2 | **8.13.0** |
 | Gradle | 8.11.1 | **8.14.3** |
 
 本机实际验证环境：Node 22.22.2 + JDK 21.0.13（`~/.jdks/jdk-21.0.13+9`）+ SDK platform 36 / build-tools 35.0.1。
-**没装 Android Studio**：用命令行 Gradle 构建，SDK 组件由 AGP 自动下载补齐（`platforms/android-36` 就是这么来的）。
+**Android Studio 2026.2.2.8 已装**（`C://Program Files\Android\Android Studio`），但构建仍走命令行 Gradle——CI 和脚本都不依赖 IDE。SDK 组件由 AGP 自动下载补齐（`platforms/android-36` 就是这么来的）。
 
 ### 构建步骤
 
