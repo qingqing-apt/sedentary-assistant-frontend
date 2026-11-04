@@ -19,3 +19,9 @@ coverage/
 Dockerfile.web
 Dockerfile.runtime
 .dockerignore
+
+# 部署运行期数据不进镜像
+deploy/certs/
+deploy/backups/
+deploy/state/
+deploy/.env

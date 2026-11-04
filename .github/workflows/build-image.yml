@@ -29,23 +29,45 @@ jobs:
           cache-from: type=gha,scope=web
           cache-to: type=gha,mode=max,scope=web
 
-      - name: 启动并检查首页
+      # 镜像里带的是真实的边缘配置：443 要证书、上游是 api/runtime 两个服务名。
+      # 所以冒烟也必须按这个前提来跑，否则测的是一个线上不存在的形态。
+      - name: 生成自签证书
         run: |
-          docker run -d --name web -p 8080:80 sedentary-web:ci
+          mkdir -p /tmp/certs
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 \
+            -keyout /tmp/certs/privkey.pem -out /tmp/certs/fullchain.pem \
+            -subj "/CN=localhost" 2>/dev/null
+          ls -l /tmp/certs
+
+      - name: 启动并按真实路由检查
+        run: |
+          docker run -d --name web -p 8080:80 -p 8443:443 \
+            -v /tmp/certs:/etc/nginx/certs:ro \
+            --add-host api:127.0.0.1 --add-host runtime:127.0.0.1 \
+            sedentary-web:ci
           ok=0
           for _ in $(seq 1 20); do
-            if curl -fsS -o /dev/null http://127.0.0.1:8080/; then
-              ok=1
-              break
-            fi
+            if curl -fsS -o /dev/null http://127.0.0.1:8080/healthz; then ok=1; break; fi
             sleep 1
           done
-          curl -sI http://127.0.0.1:8080/ | head -3 || true
           docker logs web
           if [ "$ok" != "1" ]; then
-            echo "::error::nginx 起来了但首页返回失败"
+            echo "::error::nginx 没有在 20s 内起来（多半是 upstream 解析或证书路径）"
             exit 1
           fi
+
+          code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/)
+          echo "http 状态：$code（期望 301）"
+          [ "$code" = "301" ] || { echo "::error::明文 HTTP 没有被跳转到 HTTPS"; exit 1; }
+
+          curl -fsSk https://127.0.0.1:8443/ | grep -q 'id="root"'
+          curl -fsSk https://127.0.0.1:8443/some/deep/route | grep -q 'id="root"'
+          echo "https 首页与 SPA 回退正常"
+
+          # 后端不存在时 /api 应该是 502（说明确实转给了上游），而不是 404（说明路由没配上）
+          api_code=$(curl -s -o /dev/null -w '%{http_code}' -k https://127.0.0.1:8443/api/health)
+          echo "/api/health 状态：$api_code（期望 502，上游未启动）"
+          [ "$api_code" = "502" ] || { echo "::error::/api 没有转发到 api 上游"; exit 1; }
 
       # 冒烟通过才推送：推上去的镜像一定是跑起来过的那个
       - name: 记录版本标签

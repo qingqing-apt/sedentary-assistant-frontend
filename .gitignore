@@ -18,3 +18,9 @@ blob-report/
 
 # CopilotKit 线程历史（落盘文件，不进仓库）
 .runtime-data/
+
+# 部署运行期数据：证书、备份、版本记录都不进 Git
+deploy/certs/
+deploy/backups/
+deploy/state/
+deploy/.env
