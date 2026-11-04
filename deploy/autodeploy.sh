@@ -90,10 +90,16 @@ def auth_header(repo):
 
     query = []
     if service:
-        query.append("service=" + urllib.parse.quote(service.group(1)))
-    query.append("scope=" + urllib.parse.quote(scope))
+        # ACR 的认证服务不接受 %3A / %2F 编码过的 service 和 scope（会返回 400），
+        # 所以这里保留 : 和 / 原样。标准客户端也是这么发才被接受。
+        query.append("service=" + urllib.parse.quote(service.group(1), safe=":/"))
+    query.append("scope=" + urllib.parse.quote(scope, safe=":/"))
     data = json.loads(fetch(realm.group(1) + "?" + "&".join(query), {"Authorization": basic}))
-    return "Bearer " + data["token"]
+    # ACR 返回的是 access_token；标准 registry 返回 token，两个都认
+    token = data.get("token") or data.get("access_token")
+    if not token:
+        raise RuntimeError(f"认证服务没有返回 token：{sorted(data)}")
+    return "Bearer " + token
 
 
 def latest(repo):
