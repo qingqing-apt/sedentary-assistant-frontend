@@ -50,6 +50,8 @@ preflight() {
   require_docker
   [[ -f $ENV_FILE ]] || die "$ENV_FILE 不存在；部署前必须先放好 .env（权限 600，不进 Git）"
   [[ -n $(read_env ACR) ]] || die ".env 里缺少 ACR"
+  # 少命名空间时 docker 会报 pull access denied，看着像凭证问题，实际是路径不对
+  [[ $(read_env ACR) == */* ]] || die ".env 的 ACR 缺少命名空间，应写成 主机名/命名空间（如 .../gcu）"
   mkdir -p "$STATE_DIR"
 }
 

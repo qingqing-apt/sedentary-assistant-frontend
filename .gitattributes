@@ -5,3 +5,7 @@
 *.yaml text eol=lf
 *.yml text eol=lf
 Dockerfile* text eol=lf
+# .env 会被 compose/env_file 原样解析：行尾带 \r 会让每个值多一个不可见字符，
+# 表现为 ACR 路径拉不到镜像、API Key 401，但报错信息完全指不到行尾。.env.example 复制出去就是 .env。
+.env* text eol=lf
+*.md text eol=lf

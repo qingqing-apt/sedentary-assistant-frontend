@@ -11,6 +11,7 @@ sudo mkdir -p /opt/sedentary && sudo chown "$USER" /opt/sedentary
 cp .env.example .env && chmod 600 .env      # 然后填 ACR 与模型密钥，不要把 .env 提交到任何地方
 mkdir -p certs                              # fullchain.pem / privkey.pem 放这里
 docker login crpi-1bv9mjbeu8xhh314.cn-guangzhou.personal.cr.aliyuncs.com
+# .env 的 ACR 要写成「主机名/命名空间」（如 .../gcu）；docker login 只用主机名，不带命名空间
 ```
 
 安全组只放行 443（22 沿用现有策略）。8000/3000 不映射到宿主机，也不需要放行。
