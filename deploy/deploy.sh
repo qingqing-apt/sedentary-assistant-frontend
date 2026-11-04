@@ -31,6 +31,14 @@ log() { printf '[deploy] %s\n' "$*"; }
 warn() { printf '[deploy] 警告：%s\n' "$*" >&2; }
 die() { printf '[deploy] 错误：%s\n' "$*" >&2; exit 1; }
 
+# 自动部署（autodeploy.sh）和人工 apply 共用这把锁，避免两边同时动容器
+take_lock() {
+  # autodeploy.sh 已经持有这把锁，它调用本脚本时不能再锁一次 —— flock 不认识「自己人」
+  [[ ${SEDENTARY_LOCK_HELD:-0} == 1 ]] && return 0
+  exec 9>"${LOCK_FILE:-/run/sedentary-deploy.lock}"
+  flock -n 9 || die "另一个部署正在进行，稍后再试"
+}
+
 compose() {
   docker compose --project-directory "$ROOT" -f "$ROOT/compose.yaml" --env-file "$ENV_FILE" "$@"
 }
@@ -194,6 +202,7 @@ cmd_check() {
 }
 
 cmd_backup() {
+  take_lock
   preflight
   mkdir -p "$BACKUP_DIR"
   local ts; ts=$(date +%Y%m%d-%H%M%S)
@@ -237,6 +246,7 @@ cmd_backup() {
 
 cmd_apply() {
   [[ $# -eq 3 ]] || die "用法：deploy.sh apply <api_tag> <web_tag> <runtime_tag>"
+  take_lock
   local api=$1 web=$2 runtime=$3
   check_tags "$api" "$web" "$runtime"
   preflight
@@ -301,6 +311,7 @@ fail_and_rollback() {
 
 cmd_rollback() {
   local target=${1:-last-good}
+  take_lock
   preflight
   [[ $target == last-good ]] && target=$LAST_GOOD
   [[ -f $target ]] || die "找不到回滚记录：$target"

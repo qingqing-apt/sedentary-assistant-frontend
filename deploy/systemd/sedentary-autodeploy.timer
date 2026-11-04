@@ -1,0 +1,13 @@
+[Unit]
+Description=每 2 分钟检查一次 ACR 是否有新版本
+
+[Timer]
+# 开机后等 Docker 和网络稳住再一次，别和开机自启的容器抢
+OnBootSec=3min
+OnUnitActiveSec=2min
+AccuracySec=30s
+# 关机期间错过的检查，开机后补一次即可，不需要把每次错过都跑一遍
+Persistent=false
+
+[Install]
+WantedBy=timers.target

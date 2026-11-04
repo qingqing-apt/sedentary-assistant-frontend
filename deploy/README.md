@@ -55,6 +55,48 @@ tag 只用 sha：`latest` 这类标签会让「线上到底是哪个提交」变
 - 还原只在独立位置做（例如 `/opt/sedentary/restore/app-test.db`），打开数一下行数证明可读，
   不要直接覆盖线上库。
 
+## 自动发版（轮询 ACR）
+
+服务器主动去 ACR 看有没有新的 `vX.Y.Z` 标签，有就调用 `./deploy.sh apply`。
+**不需要对公网开放任何入站端口**，GitHub 也拿不到服务器权限。
+
+```bash
+# 一次性安装
+install -m 755 autodeploy.sh /opt/sedentary/autodeploy.sh
+install -m 644 systemd/sedentary-autodeploy.service /etc/systemd/system/
+install -m 644 systemd/sedentary-autodeploy.timer   /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now sedentary-autodeploy.timer
+
+# 先手工跑一次，确认能读到 ACR 标签、能正常判断
+/opt/sedentary/autodeploy.sh
+journalctl -u sedentary-autodeploy -n 50 --no-pager
+```
+
+规则：
+
+| 情况 | 行为 |
+|---|---|
+| 三个仓库都没有 `v*` 标签 | 跳过 |
+| `web` 与 `runtime` 的版本不一致 | 跳过（同一次构建只推成功一半，等下一轮） |
+| 三元组与 `state/current.json` 相同 | 什么都不做 |
+| 出现新版本 | 备份 → 拉镜像 → 起容器 → 健康检查 |
+| 部署失败 | `deploy.sh` 自动回滚到 last-good，并记录该三元组，**30 分钟内不再重试** |
+
+几个刻意的设计：
+
+- **只认 `v*`**。`sha-` 每次提交都有，拿它当触发信号会导致每次 push 都上线。
+- **三个镜像分别取各自最新 v**。api 和前端是两条版本线，强制同号会让后端空跑构建。
+- **和人工 `apply` 共用 `/run/sedentary-deploy.lock`**，两边不会同时动容器。
+- **凭证复用 `docker login` 留下的 `/root/.docker/config.json`**，不在服务器上另存一份密码。
+  如果哪天把 Docker 改成 credential helper 存储，这里会读不到并明确报错。
+
+停止自动部署：
+
+```bash
+systemctl disable --now sedentary-autodeploy.timer
+```
+
 ## 出问题时
 
 ```bash

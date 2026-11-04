@@ -1,0 +1,15 @@
+[Unit]
+Description=久坐活动助手：轮询 ACR，有新版本就自动部署
+Documentation=file:///opt/sedentary/README.md
+After=docker.service network-online.target
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/sedentary
+ExecStart=/opt/sedentary/autodeploy.sh
+# 拉镜像 + 启动 + 健康检查（deploy.sh 上限 180s），再留出跨境拉取的余量
+TimeoutStartSec=15min
+# 失败不重启：下一轮 timer 会自己再来，失败信息看 journalctl
+Nice=10

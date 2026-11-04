@@ -9,3 +9,5 @@ Dockerfile* text eol=lf
 # 表现为 ACR 路径拉不到镜像、API Key 401，但报错信息完全指不到行尾。.env.example 复制出去就是 .env。
 .env* text eol=lf
 *.md text eol=lf
+*.service text eol=lf
+*.timer text eol=lf
