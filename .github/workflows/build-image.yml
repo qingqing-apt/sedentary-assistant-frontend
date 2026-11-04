@@ -1,0 +1,86 @@
+name: build-image
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  web:
+    name: web build + smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: 构建镜像
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile.web
+          load: true
+          push: false
+          tags: sedentary-web:ci
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
+
+      - name: 启动并检查首页
+        run: |
+          docker run -d --name web -p 8080:80 sedentary-web:ci
+          ok=0
+          for _ in $(seq 1 20); do
+            if curl -fsS -o /dev/null http://127.0.0.1:8080/; then
+              ok=1
+              break
+            fi
+            sleep 1
+          done
+          curl -sI http://127.0.0.1:8080/ | head -3 || true
+          docker logs web
+          if [ "$ok" != "1" ]; then
+            echo "::error::nginx 起来了但首页返回失败"
+            exit 1
+          fi
+
+  runtime:
+    name: runtime build + smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: 构建镜像
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile.runtime
+          load: true
+          push: false
+          tags: sedentary-runtime:ci
+          cache-from: type=gha,scope=runtime
+          cache-to: type=gha,mode=max,scope=runtime
+
+      # 后端不在，Runtime 也应该起得来（AGENT_URL 是延迟连接）
+      - name: 启动并等待健康
+        run: |
+          docker run -d --name runtime -p 3000:3000 sedentary-runtime:ci
+          status=starting
+          for _ in $(seq 1 30); do
+            status=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' runtime)
+            if [ "$status" = "healthy" ]; then
+              break
+            fi
+            sleep 2
+          done
+          docker logs runtime
+          if [ "$status" != "healthy" ]; then
+            echo "::error::Runtime 健康检查未通过（当前 $status）"
+            exit 1
+          fi
