@@ -11,10 +11,11 @@ WORKDIR /app
 
 COPY package.json package-lock.json ./
 
-# tsx 现在是 devDependency，但生产启动要用它，所以单独装一份。
-# 后续把 tsx 移到 dependencies 后，这里可以简化成纯 `npm ci --omit=dev`。
+# tsx 在 package.json 里是 devDependency，`npm ci --omit=dev` 会把它剪掉。
+# 这里装成全局命令：不参与项目的 prod/dev 裁剪，也不改动 lockfile。
+# 更彻底的做法是把 tsx 移进 dependencies，届时删掉这一行即可。
 RUN npm ci --omit=dev --no-audit --no-fund \
-    && npm install --no-save --no-package-lock --no-audit --no-fund tsx@4.23.15
+    && npm install -g --no-audit --no-fund tsx@4.23.15
 
 COPY runtime ./runtime
 
@@ -29,4 +30,4 @@ EXPOSE 3000
 HEALTHCHECK --interval=15s --timeout=5s --start-period=15s --retries=5 \
     CMD node -e "const s=require('net').connect(3000,'127.0.0.1');s.on('connect',()=>{s.end();process.exit(0)});s.on('error',()=>process.exit(1))"
 
-CMD ["/app/node_modules/.bin/tsx", "runtime/server.ts"]
+CMD ["tsx", "runtime/server.ts"]
