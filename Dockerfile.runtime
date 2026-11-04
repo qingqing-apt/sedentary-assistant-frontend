@@ -11,11 +11,8 @@ WORKDIR /app
 
 COPY package.json package-lock.json ./
 
-# tsx 在 package.json 里是 devDependency，`npm ci --omit=dev` 会把它剪掉。
-# 这里装成全局命令：不参与项目的 prod/dev 裁剪，也不改动 lockfile。
-# 更彻底的做法是把 tsx 移进 dependencies，届时删掉这一行即可。
-RUN npm ci --omit=dev --no-audit --no-fund \
-    && npm install -g --no-audit --no-fund tsx@4.23.15
+# tsx 在 dependencies 里（生产启动要用），--omit=dev 不会剪掉它
+RUN npm ci --omit=dev --no-audit --no-fund
 
 COPY runtime ./runtime
 
@@ -26,8 +23,8 @@ USER node
 
 EXPOSE 3000
 
-# 端口级探活。等 server.ts 加上 /health 后换成 HTTP 探测，才能区分“占着端口”和“服务可用”
+# HTTP 探活：能区分「占着端口」和「服务真的能应答」
 HEALTHCHECK --interval=15s --timeout=5s --start-period=15s --retries=5 \
-    CMD node -e "const s=require('net').connect(3000,'127.0.0.1');s.on('connect',()=>{s.end();process.exit(0)});s.on('error',()=>process.exit(1))"
+    CMD node -e "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
-CMD ["tsx", "runtime/server.ts"]
+CMD ["node_modules/.bin/tsx", "runtime/server.ts"]

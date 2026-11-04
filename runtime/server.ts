@@ -87,8 +87,31 @@ app.use(
 
 app.use(createCopilotExpressHandler({ runtime, basePath: "/api/copilotkit" }));
 
-app.listen(PORT, "0.0.0.0", () => {
+/**
+ * 容器探针用。只回答「进程活着、路由挂上了」，不碰模型也不碰磁盘 ——
+ * 探针里做重活会让「后端慢」变成「容器被判死」。
+ */
+app.get("/health", (_req, res) => {
+  res.json({ status: "ok", agentUrl: AGENT_URL });
+});
+
+const server = app.listen(PORT, "0.0.0.0", () => {
   console.log(`CopilotKit Runtime: http://localhost:${PORT}/api/copilotkit`);
   console.log(`  -> forwards to agent: ${AGENT_URL}`);
   console.log(`  -> listening on 0.0.0.0 (APK / 模拟器可访问)`);
 });
+
+/**
+ * docker stop 发的是 SIGTERM，默认行为是立即退出 —— 正在流式返回的对话会被截断。
+ * 先停止接收新连接，等在途请求结束再退出；10 秒兜底，避免卡死。
+ */
+for (const signal of ["SIGTERM", "SIGINT"] as const) {
+  process.on(signal, () => {
+    console.log(`收到 ${signal}，停止接收新请求`);
+    server.close(() => {
+      console.log("在途请求已结束，退出");
+      process.exit(0);
+    });
+    setTimeout(() => process.exit(1), 10_000).unref();
+  });
+}
