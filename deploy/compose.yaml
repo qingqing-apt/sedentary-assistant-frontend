@@ -1,0 +1,103 @@
+# 三个容器：nginx 入口（edge）+ FastAPI（api）+ CopilotKit Runtime（runtime）。
+#
+# 只有 edge 发布端口；api / runtime 只在 compose 内部网络可见，不映射到宿主机，
+# 安全组和 docker 的端口映射两道都不通。
+#
+# 镜像 tag 必须显式给出：${VAR:?} 表示缺失时 compose 直接报错，
+# 不会退化成 latest 悄悄拉到别的版本。tag 由 deploy.sh 通过环境变量注入。
+
+name: sedentary
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  api:
+    image: ${ACR:?缺少 ACR 变量}/sedentary-api:${API_TAG:?缺少 API_TAG}
+    restart: unless-stopped
+    init: true
+    # .env 只读使用：密钥由负责人线下维护，CI 和脚本都不写它
+    env_file:
+      - .env
+    environment:
+      TZ: Asia/Shanghai
+      DATABASE_URL: ${DATABASE_URL:-sqlite:////app/data/app.db}
+    expose:
+      - "8000"
+    volumes:
+      - data:/app/data
+    # SQLite 单文件 + 单 worker，所以不 scale，也不做滚动重启
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    mem_limit: 768m
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+
+  runtime:
+    image: ${ACR:?缺少 ACR 变量}/sedentary-runtime:${RUNTIME_TAG:?缺少 RUNTIME_TAG}
+    restart: unless-stopped
+    init: true
+    environment:
+      NODE_ENV: production
+      TZ: Asia/Shanghai
+      COPILOT_RUNTIME_PORT: "3000"
+      AGENT_URL: http://api:8000/api/agent/chat
+      THREADS_DIR: /app/.runtime-data/threads
+    expose:
+      - "3000"
+    volumes:
+      - threads:/app/.runtime-data
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "const s=require('net').connect(3000,'127.0.0.1');s.on('connect',()=>{s.end();process.exit(0)});s.on('error',()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    mem_limit: 768m
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+
+  edge:
+    image: ${ACR:?缺少 ACR 变量}/sedentary-web:${WEB_TAG:?缺少 WEB_TAG}
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # 只挂证书，只读。两个文件：fullchain.pem / privkey.pem
+      - ${CERTS_DIR:-./certs}:/etc/nginx/certs:ro
+    depends_on:
+      api:
+        condition: service_healthy
+      runtime:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    mem_limit: 128m
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+
+# 卷名写死，不用 <project>_data 这种前缀：
+# 备份命令、回滚演练、`docker volume ls` 排查时名字一致，少一层猜测。
+volumes:
+  data:
+    name: sedentary_data
+  threads:
+    name: sedentary_threads
