@@ -64,6 +64,11 @@ jobs:
           curl -fsSk https://127.0.0.1:8443/some/deep/route | grep -q 'id="root"'
           echo "https 首页与 SPA 回退正常"
 
+          # 首页命中 location = /index.html，那里有自己的 add_header，会整体覆盖 server 级安全头
+          hsts=$(curl -fsSk -D - -o /dev/null https://127.0.0.1:8443/ | tr -d '\r' | grep -ci '^strict-transport-security:')
+          [ "$hsts" -ge 1 ] || { echo "::error::首页缺少 HSTS —— location 里的 add_header 覆盖了 server 级安全头"; exit 1; }
+          echo "首页安全头正常"
+
           # 后端不存在时 /api 应该是 502（说明确实转给了上游），而不是 404（说明路由没配上）
           api_code=$(curl -s -o /dev/null -w '%{http_code}' -k https://127.0.0.1:8443/api/health)
           echo "/api/health 状态：$api_code（期望 502，上游未启动）"
