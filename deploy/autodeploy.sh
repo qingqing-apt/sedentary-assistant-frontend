@@ -53,10 +53,12 @@ PY
 
 # ACR 个人版是 Bearer token 认证：先拿 docker 凭证换 token，再查标签。
 # token 的 realm / service 每次从 401 响应里读，避免把地域相关的地址写死。
+# 凭证走环境变量而不是 stdin：`python3 -` 本身就从 stdin 读脚本，管道喂进去会被 heredoc 吃掉。
 # 输出三个仓库各自最新的 vX.Y.Z，没有就输出 "-"。
-TAGS=$(printf '%s\n' "$CRED" | python3 - "$REGISTRY" "$NAMESPACE" <<'PY'
+TAGS=$(ACR_CRED="$CRED" python3 - "$REGISTRY" "$NAMESPACE" <<'PY'
 import base64
 import json
+import os
 import re
 import sys
 import urllib.error
@@ -64,7 +66,10 @@ import urllib.parse
 import urllib.request
 
 registry, namespace = sys.argv[1], sys.argv[2]
-cred = sys.stdin.readline().strip()
+cred = os.environ["ACR_CRED"].strip()
+if not cred:
+    print("[autodeploy] docker 凭证为空，先执行 docker login", file=sys.stderr)
+    raise SystemExit(1)
 basic = "Basic " + base64.b64encode(cred.encode()).decode()
 
 
