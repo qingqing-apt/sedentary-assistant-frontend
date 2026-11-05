@@ -19,6 +19,7 @@ ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 ENV_FILE="$ROOT/.env"
 CURRENT="$ROOT/state/current.json"
 FAILED="$ROOT/state/autodeploy-failed.json"
+PENDING="$ROOT/state/pending-release.json"
 RETRY_COOLDOWN=1800
 
 log() { printf '[autodeploy] %s\n' "$*"; }
@@ -34,6 +35,11 @@ ACR=$(sed -n 's/^ACR=//p' "$ENV_FILE" | tail -1 | tr -d '\r')
 [[ $ACR == */* ]] || { log "ACR 需要写成 主机名/命名空间"; exit 1; }
 REGISTRY=${ACR%%/*}
 NAMESPACE=${ACR#*/}
+
+# 发布门禁：report（默认）= 只记录待发布版本，不部署；auto = 发现即部署。
+# 未在 .env 里显式写 auto 时一律按 report 处理 —— 安全默认值。
+MODE=$(sed -n 's/^AUTO_DEPLOY_MODE=//p' "$ENV_FILE" | tail -1 | tr -d '\r')
+MODE=${MODE:-report}
 
 # 复用 docker login 留下的凭证，不在服务器上再存一份密码。
 # 用了 credential helper 的机器这里会拿不到，需要改回默认的 config 存储。
@@ -153,11 +159,37 @@ print(d["api"], d["web"], d["runtime"])
 PY
 )
   if [[ $api == "$cur_api" && $web == "$cur_web" && $runtime == "$cur_runtime" ]]; then
+    rm -f "$PENDING"
     exit 0
   fi
   log "发现新版本：api $cur_api → $api，web $cur_web → $web，runtime $cur_runtime → $runtime"
 else
-  log "首次自动部署：api=$api web=$web runtime=$runtime"
+  cur_api=""; cur_web=""; cur_runtime=""
+  log "首次发现可用版本：api=$api web=$web runtime=$runtime"
+fi
+
+# 先落盘待发布记录：report 模式下这就是唯一产物，人工据此决定是否 apply
+python3 - "$PENDING" "$api" "$web" "$runtime" "$cur_api" "$cur_web" "$cur_runtime" "$MODE" <<'PY'
+import datetime, json, sys
+path, api, web, runtime, cur_api, cur_web, cur_runtime, mode = sys.argv[1:9]
+record = {
+    "api": api,
+    "web": web,
+    "runtime": runtime,
+    "current": {"api": cur_api, "web": cur_web, "runtime": cur_runtime},
+    "mode": mode,
+    "detected_at": datetime.datetime.now().astimezone().isoformat(timespec="seconds"),
+    "apply_command": f"./deploy.sh apply {api} {web} {runtime}",
+}
+with open(path, "w", encoding="utf-8") as fh:
+    json.dump(record, fh, ensure_ascii=False, indent=2)
+    fh.write("\n")
+PY
+
+if [[ $MODE != "auto" ]]; then
+  log "门禁拦截（AUTO_DEPLOY_MODE=$MODE）：已记录 $PENDING，本轮不部署"
+  log "人工发布：cd $ROOT && ./deploy.sh apply $api $web $runtime"
+  exit 0
 fi
 
 # 同一组版本刚失败过就别每 2 分钟重试一次，否则日志会被刷满、容器反复重启。
@@ -177,7 +209,7 @@ then
 fi
 
 if SEDENTARY_LOCK_HELD=1 "$ROOT/deploy.sh" apply "$api" "$web" "$runtime"; then
-  rm -f "$FAILED"
+  rm -f "$FAILED" "$PENDING"
   log "自动部署完成：api=$api web=$web runtime=$runtime"
 else
   python3 - "$FAILED" "$api" "$web" "$runtime" <<'PY'

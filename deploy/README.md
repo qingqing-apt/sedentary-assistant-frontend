@@ -57,8 +57,11 @@ tag 只用 sha：`latest` 这类标签会让「线上到底是哪个提交」变
 
 ## 自动发版（轮询 ACR）
 
-服务器主动去 ACR 看有没有新的 `vX.Y.Z` 标签，有就调用 `./deploy.sh apply`。
+服务器主动去 ACR 看有没有新的 `vX.Y.Z` 标签，和当前部署版本比对。
 **不需要对公网开放任何入站端口**，GitHub 也拿不到服务器权限。
+
+默认带**发布门禁**：发现新版本只写 `state/pending-release.json` 并记日志，**不部署**；
+由人看过之后执行 `./deploy.sh apply`，这一步本身就是人工批准。
 
 ```bash
 # 一次性安装
@@ -79,9 +82,19 @@ journalctl -u sedentary-autodeploy -n 50 --no-pager
 |---|---|
 | 三个仓库都没有 `v*` 标签 | 跳过 |
 | `web` 与 `runtime` 的版本不一致 | 跳过（同一次构建只推成功一半，等下一轮） |
-| 三元组与 `state/current.json` 相同 | 什么都不做 |
-| 出现新版本 | 备份 → 拉镜像 → 起容器 → 健康检查 |
-| 部署失败 | `deploy.sh` 自动回滚到 last-good，并记录该三元组，**30 分钟内不再重试** |
+| 三元组与 `state/current.json` 相同 | 什么都不做，并清掉过期的 pending 记录 |
+| 出现新版本（`report`，默认） | 写 `state/pending-release.json`，**不部署** |
+| 出现新版本（`auto`） | 备份 → 拉镜像 → 起容器 → 健康检查 |
+| 部署失败（`auto`） | 自动回滚 last-good，记录该三元组，**30 分钟内不再重试** |
+
+人工批准发布：
+
+```bash
+cat /opt/sedentary/state/pending-release.json     # 看 apply_command 那一行
+cd /opt/sedentary && ./deploy.sh apply <api> <web> <runtime>
+```
+
+切换门禁：在 `.env` 里改 `AUTO_DEPLOY_MODE=report|auto`（不写等价于 `report`）。
 
 几个刻意的设计：
 
@@ -96,6 +109,10 @@ journalctl -u sedentary-autodeploy -n 50 --no-pager
 ```bash
 systemctl disable --now sedentary-autodeploy.timer
 ```
+
+**回滚演练前必须停掉 timer**（`systemctl stop sedentary-autodeploy.timer`），否则轮询器会把
+刚回滚掉的版本当成"新版本"再部署回来；演练结束后再 `start`。
+`report` 模式下轮询器不会部署，但仍然建议停掉，避免 pending 记录造成误解。
 
 ## 出问题时
 
