@@ -2,15 +2,19 @@
 <!--
   Debug 专用 manifest，只参与 debug 变体。
 
-  为什么需要它：App 里跑的是 localhost WebView，联调的后端是
-  http://10.0.2.2:8000（模拟器）或 http://192.168.x.x:8000（真机），
-  都是明文 HTTP，而 Android 9+ 默认禁止明文。
+  两件事：
+  1. 联调后端可能是明文（模拟器 10.0.2.2 / 局域网 IP），Android 9+ 默认禁止，
+     这里放行 —— 主 manifest 刻意不声明，release 构建不会合并本文件。
+  2. 指向 debug 专属的网络安全配置，额外信任测试服务器的自签证书（只这一张）。
 
-  主 manifest（src/main）刻意不声明 usesCleartextTraffic，
-  所以 release 构建不会合并本文件 → 正式包保持「只允许 HTTPS」。
+  每次改动后用下面这条核对合并结果：
+    ./gradlew :app:processDebugMainManifest
+    build/intermediates/merged_manifests/debug/AndroidManifest.xml
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <application android:usesCleartextTraffic="true" />
+    <application
+        android:usesCleartextTraffic="true"
+        android:networkSecurityConfig="@xml/network_security_config" />
 
 </manifest>

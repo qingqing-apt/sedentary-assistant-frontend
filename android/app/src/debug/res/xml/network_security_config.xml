@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  仅 debug 变体的网络安全配置。
+
+  目的：允许联调包访问测试服务器 https://117.72.40.229，而证书是自签的。
+  做法是**额外信任这一张证书**（连同系统根证书），不是 cleartext 放行，
+  也不是「信任所有证书」—— 校验依然进行，只是多了一个信任锚。
+
+  正式包不合并 debug 资源，也不引用本文件，因此 release 仍只信任系统 CA。
+  证书随测试服务器更换而失效时，替换 res/raw/sedentary_test_cert.pem 即可。
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="@raw/sedentary_test_cert" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
