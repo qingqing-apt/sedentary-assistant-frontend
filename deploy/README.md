@@ -83,7 +83,7 @@ journalctl -u sedentary-autodeploy -n 50 --no-pager
 | 三个仓库都没有 `v*` 标签 | 跳过 |
 | `web` 与 `runtime` 的版本不一致 | 跳过（同一次构建只推成功一半，等下一轮） |
 | 三元组与 `state/current.json` 相同 | 什么都不做，并清掉过期的 pending 记录 |
-| 出现新版本（`report`，默认） | 写 `state/pending-release.json`，**不部署** |
+| 出现新版本（`report`，默认） | 写 `state/pending-release.json`，**不部署**；同一组版本再次检测到时不重复写、不重复打日志 |
 | 出现新版本（`auto`） | 备份 → 拉镜像 → 起容器 → 健康检查 |
 | 部署失败（`auto`） | 自动回滚 last-good，记录该三元组，**30 分钟内不再重试** |
 

@@ -151,7 +151,9 @@ if [[ $web != "$runtime" ]]; then
   exit 0
 fi
 
+had_current=0
 if [[ -f $CURRENT ]]; then
+  had_current=1
   read -r cur_api cur_web cur_runtime < <(python3 - "$CURRENT" <<'PY'
 import json, sys
 d = json.load(open(sys.argv[1], encoding="utf-8"))
@@ -162,9 +164,28 @@ PY
     rm -f "$PENDING"
     exit 0
   fi
-  log "发现新版本：api $cur_api → $api，web $cur_web → $web，runtime $cur_runtime → $runtime"
 else
   cur_api=""; cur_web=""; cur_runtime=""
+fi
+
+# 同一组待发布版本已经记录过就直接退出：timer 每 2 分钟跑一次，
+# 重复写文件和重复打日志会把 journal 刷满，而信息没有任何变化。
+if [[ -f $PENDING ]] && python3 - "$PENDING" "$api" "$web" "$runtime" <<'PY'
+import json, sys
+try:
+    d = json.load(open(sys.argv[1], encoding="utf-8"))
+except Exception:
+    sys.exit(1)
+same = [d.get("api"), d.get("web"), d.get("runtime")] == sys.argv[2:5]
+sys.exit(0 if same else 1)
+PY
+then
+  exit 0
+fi
+
+if [[ $had_current == 1 ]]; then
+  log "发现新版本：api $cur_api → $api，web $cur_web → $web，runtime $cur_runtime → $runtime"
+else
   log "首次发现可用版本：api=$api web=$web runtime=$runtime"
 fi
 
