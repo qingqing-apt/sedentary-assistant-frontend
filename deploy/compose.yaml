@@ -25,6 +25,12 @@ services:
     environment:
       TZ: Asia/Shanghai
       DATABASE_URL: ${DATABASE_URL:-sqlite:////app/data/app.db}
+      # 链路追踪：导出到同网络的 jaeger；没配 exporter 时只是不导出，不影响启动
+      OTEL_SERVICE_NAME: sedentary-api
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4317
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+      OTEL_TRACES_SAMPLER: parentbased_always_on
+      OTEL_RESOURCE_ATTRIBUTES: deployment.environment=test
     expose:
       - "8000"
     volumes:
@@ -65,6 +71,21 @@ services:
       retries: 5
       start_period: 15s
     mem_limit: 768m
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+
+  # 链路追踪后端（测试/演示用）：UI 只绑 127.0.0.1，通过 SSH 隧道查看
+  jaeger:
+    image: jaegertracing/all-in-one:1.62
+    restart: unless-stopped
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "127.0.0.1:16686:16686"
+    expose:
+      - "4317"
+    mem_limit: 256m
     security_opt:
       - no-new-privileges:true
     logging: *default-logging
