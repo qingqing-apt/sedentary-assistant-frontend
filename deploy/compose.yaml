@@ -75,9 +75,10 @@ services:
       - no-new-privileges:true
     logging: *default-logging
 
-  # 链路追踪后端（测试/演示用）：UI 只绑 127.0.0.1，通过 SSH 隧道查看
+  # 链路追踪后端（测试/演示用）：UI 只绑 127.0.0.1，通过 SSH 隧道查看。
+  # 镜像经 ACR 中转：服务器直连 Docker Hub 会超时（见 .github/workflows/mirror-jaeger.yml）。
   jaeger:
-    image: jaegertracing/all-in-one:1.62
+    image: ${ACR:?缺少 ACR 变量}/sedentary-jaeger:latest
     restart: unless-stopped
     environment:
       COLLECTOR_OTLP_ENABLED: "true"
