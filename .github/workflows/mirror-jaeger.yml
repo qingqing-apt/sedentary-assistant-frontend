@@ -1,0 +1,31 @@
+name: mirror-jaeger
+
+# 一次性任务：把 Jaeger all-in-one 镜像从 Docker Hub 中转进 ACR。
+# 服务器访问不了 Docker Hub（跨境超时），ACR 在国内可以正常拉取。
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mirror:
+    name: mirror jaeger to acr
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: 登录镜像仓库
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ vars.ACR_REGISTRY }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: 拉取并中转
+        env:
+          IMAGE: ${{ vars.ACR_REGISTRY }}/${{ vars.ACR_NAMESPACE }}/sedentary-jaeger
+        run: |
+          docker pull jaegertracing/all-in-one:1.62
+          docker tag jaegertracing/all-in-one:1.62 "$IMAGE:1.62"
+          docker push "$IMAGE:1.62"
+          docker inspect -f '{{index .RepoDigests 0}}' "$IMAGE:1.62"
